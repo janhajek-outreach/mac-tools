@@ -107,6 +107,32 @@ final class PickerModel: ObservableObject {
         selectedIndices = [selection]
     }
 
+    /// Page up/down: jump the selection by `step` rows (collapses multi-selection).
+    func pageUp(by step: Int) {
+        guard !filtered.isEmpty else { return }
+        selection = max(0, selection - max(1, step))
+        selectionAnchor = selection
+        selectedIndices = [selection]
+    }
+
+    func pageDown(by step: Int) {
+        guard !filtered.isEmpty else { return }
+        selection = min(filtered.count - 1, selection + max(1, step))
+        selectionAnchor = selection
+        selectedIndices = [selection]
+    }
+
+    /// Jump to the first / last row (collapses multi-selection).
+    func moveSelectionToStart() {
+        guard !filtered.isEmpty else { return }
+        selectSingle(0)
+    }
+
+    func moveSelectionToEnd() {
+        guard !filtered.isEmpty else { return }
+        selectSingle(filtered.count - 1)
+    }
+
     /// Shift+up/down: extend the selection range from the anchor.
     func extendSelectionUp() {
         guard !filtered.isEmpty else { return }

@@ -342,6 +342,10 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         // ---- Plain navigation (collapses multi-selection) ----
         if keys.selectUp.matches(event)   { model.moveSelectionUp(); return nil }
         if keys.selectDown.matches(event) { model.moveSelectionDown(); return nil }
+        if keys.pageUp.matches(event)     { model.pageUp(by: config.ui.pageSize); return nil }
+        if keys.pageDown.matches(event)   { model.pageDown(by: config.ui.pageSize); return nil }
+        if keys.home.matches(event)       { model.moveSelectionToStart(); return nil }
+        if keys.end.matches(event)        { model.moveSelectionToEnd(); return nil }
         if isCommit(event) {
             if model.hasMultiSelection { model.onCommitMany(model.selectedItems) }
             else { model.commit() }

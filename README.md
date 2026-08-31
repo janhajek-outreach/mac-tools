@@ -36,6 +36,8 @@ and organise entries across tabs — then paste into whatever app you were using
 | **⌘L** | Show / hide the picker (global) |
 | **↑ / ↓** | Move selection (collapses a multi-selection) |
 | **⇧↑ / ⇧↓** | Extend the selection range |
+| **⇞ / ⇟** | Page selection up / down (jump by `ui.pageSize` rows) |
+| **↖ / ↘** (Home / End) | Jump to the first / last item |
 | **⏎** | Paste selected item(s) into the previous app |
 | **⎋** | Close search, or close window and return focus to the previous app |
 | **⌘F** | Search (type to filter) |
@@ -73,7 +75,44 @@ tool or flags (default is `screencapture -i -c`):
 }
 ```
 
-_Planned: window management, alt-tab._
+### Window Manager
+Move the focused window between displays with global hotkeys. Defaults:
+
+| Key | Action |
+|-----|--------|
+| **⌃⌥→** | Move focused window to the next display |
+| **⌃⌥←** | Move focused window to the previous display |
+| **⌃⌥↑** | Maximize the focused window (fill the current display) |
+| **⌃⌥↓** | Minimize the focused window to the Dock |
+| **⌃⌥⌘←** | Snap the focused window to the left half of the current display |
+| **⌃⌥⌘→** | Snap the focused window to the right half of the current display |
+
+When moving between displays the window is **scaled proportionally** to the target
+display's visible area (below the menu bar, clear of the Dock), keeping its relative
+position and footprint. If the window is **maximized**, it stays maximized on the new
+display (filling it, even if bigger). Displays are ordered left→right.
+
+**Snap left/right** resizes the window to half the display and, in snap-assist style, pops
+up a menu of other visible windows so you can pick one to fill the empty half. Press Escape
+(or click away) to leave the other half empty.
+
+Uses the **Accessibility** permission (the same one paste needs). All actions are also
+available from the menu-bar menu. Configurable:
+
+```json
+{
+  "windowManager": {
+    "nextDisplay": { "key": "RIGHT", "modifiers": ["ctrl", "opt"] },
+    "prevDisplay": { "key": "LEFT",  "modifiers": ["ctrl", "opt"] },
+    "maximize":    { "key": "UP",    "modifiers": ["ctrl", "opt"] },
+    "minimize":    { "key": "DOWN",  "modifiers": ["ctrl", "opt"] },
+    "snapLeft":    { "key": "LEFT",  "modifiers": ["ctrl", "opt", "cmd"] },
+    "snapRight":   { "key": "RIGHT", "modifiers": ["ctrl", "opt", "cmd"] }
+  }
+}
+```
+
+_Planned: alt-tab, half/quarter snapping._
 
 ## Requirements
 
@@ -100,6 +139,23 @@ instance, and relaunches the installed copy. The menu-bar icon (default 🧰, se
 login item points at `~/Applications/MacTools.app`, keep installing there for it to stay valid.
 
 > Moved the project directory? Run `rm -rf .build` first — SPM bakes absolute paths into its cache.
+
+## Tests
+
+The window-manager geometry (display ordering, screen detection, coordinate flipping,
+half-splitting, maximize detection, and proportional move/resize) is factored into a pure,
+AppKit-free library target (`Sources/MacToolsGeometry/`) so it can be unit-tested without
+real displays.
+
+Because this machine has only the Command Line Tools (no full Xcode, so no `XCTest`), the
+tests run through a tiny dependency-free harness:
+
+```bash
+swift run GeometryTests
+```
+
+It prints each check and exits non-zero on failure. The suite covers the real multi-display
+layout, including the "don't skip the middle display" move cycle and proportional resizing.
 
 ## Configuration
 
@@ -131,7 +187,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "showList": { "key": "L", "modifiers": ["cmd"] },
     "search":   { "key": "F", "modifiers": ["cmd"] },
     "window": { "width": 680, "height": 560, "floating": true, "hideOnClickAway": true },
-    "ui": { "zebraStriping": true, "zebraOpacity": 0.05, "selectionOpacity": 0.22, "showFooterHints": true },
+    "ui": { "zebraStriping": true, "zebraOpacity": 0.05, "selectionOpacity": 0.22, "showFooterHints": true, "rowMaxLines": 10, "pageSize": 10 },
     "keys": {
       "editText":   { "key": "F2" },
       "label":      { "key": "F3" },
@@ -143,6 +199,10 @@ omit falls back to its built-in default, so you only need to specify what you wa
       "selectDown": { "key": "DOWN" },
       "extendUp":   { "key": "UP",    "modifiers": ["shift"] },
       "extendDown": { "key": "DOWN",  "modifiers": ["shift"] },
+      "pageUp":     { "key": "PAGEUP" },
+      "pageDown":   { "key": "PAGEDOWN" },
+      "home":       { "key": "HOME" },
+      "end":        { "key": "END" },
       "prevTab":    { "key": "LEFT",  "modifiers": ["cmd"] },
       "nextTab":    { "key": "RIGHT", "modifiers": ["cmd"] },
       "newTab":     { "key": "T", "modifiers": ["cmd"] },
@@ -157,7 +217,8 @@ omit falls back to its built-in default, so you only need to specify what you wa
 ```
 
 - `key` — a letter, digit, function key (`F1`–`F12`), arrow (`UP`/`DOWN`/`LEFT`/`RIGHT`),
-  or named key (`RETURN`, `ENTER`, `ESC`, `TAB`, `SPACE`, `DELETE`).
+  or named key (`RETURN`, `ENTER`, `ESC`, `TAB`, `SPACE`, `DELETE`, `PAGEUP`, `PAGEDOWN`,
+  `HOME`, `END`).
 - `modifiers` — any of `cmd`, `shift`, `opt`, `ctrl`.
 - `blobDir` / `tabsFile` / `clipboardFile` — relative paths are resolved under the
   copy-paste data dir; absolute or `~` paths are used as-is.

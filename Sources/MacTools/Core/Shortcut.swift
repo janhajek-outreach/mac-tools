@@ -91,6 +91,9 @@ struct Shortcut: Codable, Equatable {
         case "TAB": return "⇥"
         case "SPACE": return "␣"
         case "DELETE", "BACKSPACE": return "⌫"
+        case "PAGEUP", "PAGEDOWN": return key.uppercased() == "PAGEUP" ? "⇞" : "⇟"
+        case "HOME": return "↖"
+        case "END": return "↘"
         default: return key.uppercased()
         }
     }
@@ -123,5 +126,7 @@ struct Shortcut: Codable, Equatable {
         "TAB": UInt32(kVK_Tab), "SPACE": UInt32(kVK_Space),
         "DELETE": UInt32(kVK_Delete), "BACKSPACE": UInt32(kVK_Delete),
         "FORWARDDELETE": UInt32(kVK_ForwardDelete),
+        "PAGEUP": UInt32(kVK_PageUp), "PAGEDOWN": UInt32(kVK_PageDown),
+        "HOME": UInt32(kVK_Home), "END": UInt32(kVK_End),
     ]
 }

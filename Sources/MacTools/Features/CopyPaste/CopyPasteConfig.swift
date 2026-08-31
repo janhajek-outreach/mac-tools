@@ -50,6 +50,10 @@ struct CopyPasteConfig: Codable {
         var selectDown: Shortcut        // move selection down (extends with shift)
         var extendUp: Shortcut          // extend selection up
         var extendDown: Shortcut        // extend selection down
+        var pageUp: Shortcut            // jump selection up by a page
+        var pageDown: Shortcut          // jump selection down by a page
+        var home: Shortcut              // jump to first row
+        var end: Shortcut               // jump to last row
         var prevTab: Shortcut
         var nextTab: Shortcut
         var newTab: Shortcut
@@ -62,7 +66,8 @@ struct CopyPasteConfig: Codable {
         init(
             editText: Shortcut, label: Shortcut, copyToTab: Shortcut, delete: Shortcut,
             moveUp: Shortcut, moveDown: Shortcut, selectUp: Shortcut, selectDown: Shortcut,
-            extendUp: Shortcut, extendDown: Shortcut, prevTab: Shortcut, nextTab: Shortcut,
+            extendUp: Shortcut, extendDown: Shortcut, pageUp: Shortcut, pageDown: Shortcut,
+            home: Shortcut, end: Shortcut, prevTab: Shortcut, nextTab: Shortcut,
             newTab: Shortcut, renameTab: Shortcut, closeTab: Shortcut,
             commit: Shortcut, cancel: Shortcut, quit: Shortcut
         ) {
@@ -70,6 +75,8 @@ struct CopyPasteConfig: Codable {
             self.delete = delete; self.moveUp = moveUp; self.moveDown = moveDown
             self.selectUp = selectUp; self.selectDown = selectDown
             self.extendUp = extendUp; self.extendDown = extendDown
+            self.pageUp = pageUp; self.pageDown = pageDown
+            self.home = home; self.end = end
             self.prevTab = prevTab; self.nextTab = nextTab; self.newTab = newTab
             self.renameTab = renameTab; self.closeTab = closeTab
             self.commit = commit; self.cancel = cancel; self.quit = quit
@@ -86,6 +93,8 @@ struct CopyPasteConfig: Codable {
             moveUp = g(.moveUp, d.moveUp); moveDown = g(.moveDown, d.moveDown)
             selectUp = g(.selectUp, d.selectUp); selectDown = g(.selectDown, d.selectDown)
             extendUp = g(.extendUp, d.extendUp); extendDown = g(.extendDown, d.extendDown)
+            pageUp = g(.pageUp, d.pageUp); pageDown = g(.pageDown, d.pageDown)
+            home = g(.home, d.home); end = g(.end, d.end)
             prevTab = g(.prevTab, d.prevTab); nextTab = g(.nextTab, d.nextTab)
             newTab = g(.newTab, d.newTab); renameTab = g(.renameTab, d.renameTab)
             closeTab = g(.closeTab, d.closeTab); commit = g(.commit, d.commit)
@@ -121,11 +130,13 @@ struct CopyPasteConfig: Codable {
         var showFooterHints: Bool
         /// Max number of text lines a row expands to before being visually truncated.
         var rowMaxLines: Int
+        /// Number of rows the selection jumps when paging (Page Up / Page Down).
+        var pageSize: Int
 
-        init(zebraStriping: Bool, zebraOpacity: Double, selectionOpacity: Double, showFooterHints: Bool, rowMaxLines: Int) {
+        init(zebraStriping: Bool, zebraOpacity: Double, selectionOpacity: Double, showFooterHints: Bool, rowMaxLines: Int, pageSize: Int) {
             self.zebraStriping = zebraStriping; self.zebraOpacity = zebraOpacity
             self.selectionOpacity = selectionOpacity; self.showFooterHints = showFooterHints
-            self.rowMaxLines = rowMaxLines
+            self.rowMaxLines = rowMaxLines; self.pageSize = pageSize
         }
 
         init(from decoder: Decoder) throws {
@@ -136,6 +147,7 @@ struct CopyPasteConfig: Codable {
             selectionOpacity = (try? c.decode(Double.self, forKey: .selectionOpacity)) ?? d.selectionOpacity
             showFooterHints = (try? c.decode(Bool.self, forKey: .showFooterHints)) ?? d.showFooterHints
             rowMaxLines = (try? c.decode(Int.self, forKey: .rowMaxLines)) ?? d.rowMaxLines
+            pageSize = (try? c.decode(Int.self, forKey: .pageSize)) ?? d.pageSize
         }
     }
 
@@ -190,6 +202,10 @@ struct CopyPasteConfig: Codable {
             selectDown: Shortcut(key: "DOWN"),
             extendUp:   Shortcut(key: "UP", modifiers: ["shift"]),
             extendDown: Shortcut(key: "DOWN", modifiers: ["shift"]),
+            pageUp:     Shortcut(key: "PAGEUP"),
+            pageDown:   Shortcut(key: "PAGEDOWN"),
+            home:       Shortcut(key: "HOME"),
+            end:        Shortcut(key: "END"),
             prevTab:    Shortcut(key: "LEFT", modifiers: ["cmd"]),
             nextTab:    Shortcut(key: "RIGHT", modifiers: ["cmd"]),
             newTab:     Shortcut(key: "T", modifiers: ["cmd"]),
@@ -206,7 +222,7 @@ struct CopyPasteConfig: Codable {
         clipboardTabName: "Clipboard",
         snippetTabs: ["Snippets", "Work"],
         window: WindowConfig(width: 680, height: 560, floating: true, hideOnClickAway: true),
-        ui: UIConfig(zebraStriping: true, zebraOpacity: 0.05, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10),
+        ui: UIConfig(zebraStriping: true, zebraOpacity: 0.10, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10, pageSize: 10),
         multiSelectPasteSeparator: "\n",
         deleteTabConfirmWord: "delete",
         pollInterval: 0.3

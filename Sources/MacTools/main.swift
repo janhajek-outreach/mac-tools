@@ -26,7 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         [
             CopyPasteFeature(config: config.copyPaste),
             ScreenshotFeature(config: config.screenshot),
-            // Future: WindowManagerFeature(...), AltTabFeature(...)
+            WindowManagerFeature(config: config.windowManager),
+            // Future: AltTabFeature(...)
         ]
     }
 

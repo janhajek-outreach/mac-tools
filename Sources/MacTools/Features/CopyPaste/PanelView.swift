@@ -1,6 +1,28 @@
 import SwiftUI
 import AppKit
 
+/// A blurred window background that always renders "active" (so it never degrades to a
+/// flat grey when the panel isn't the key window) and automatically follows the system
+/// light/dark appearance via `NSVisualEffectView`.
+struct VisualEffectBackground: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .windowBackground
+    var blending: NSVisualEffectView.BlendingMode = .behindWindow
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blending
+        view.state = .active            // force vibrancy regardless of key-window status
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
+        view.blendingMode = blending
+        view.state = .active
+    }
+}
+
 struct PanelView: View {
     @ObservedObject var model: PickerModel
     @ObservedObject var store: TabStore
@@ -35,7 +57,7 @@ struct PanelView: View {
             if config.ui.showFooterHints { footer }
         }
         .frame(width: config.window.width, height: config.window.height)
-        .background(.regularMaterial)
+        .background(VisualEffectBackground())
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay { if model.copyToTabForIndex != nil { copyToTabOverlay } }
         .overlay { if model.labelingIndex != nil { labelOverlay } }

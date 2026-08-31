@@ -6,6 +6,7 @@ struct AppConfig: Codable {
     var app: AppSection
     var copyPaste: CopyPasteConfig
     var screenshot: ScreenshotConfig
+    var windowManager: WindowManagerConfig
 
     struct AppSection: Codable {
         /// Menu-bar status item title/glyph.
@@ -31,10 +32,11 @@ struct AppConfig: Codable {
         }
     }
 
-    init(app: AppSection, copyPaste: CopyPasteConfig, screenshot: ScreenshotConfig) {
+    init(app: AppSection, copyPaste: CopyPasteConfig, screenshot: ScreenshotConfig, windowManager: WindowManagerConfig) {
         self.app = app
         self.copyPaste = copyPaste
         self.screenshot = screenshot
+        self.windowManager = windowManager
     }
 
     init(from decoder: Decoder) throws {
@@ -42,12 +44,14 @@ struct AppConfig: Codable {
         app = (try? c.decode(AppSection.self, forKey: .app)) ?? AppConfig.default.app
         copyPaste = (try? c.decode(CopyPasteConfig.self, forKey: .copyPaste)) ?? AppConfig.default.copyPaste
         screenshot = (try? c.decode(ScreenshotConfig.self, forKey: .screenshot)) ?? AppConfig.default.screenshot
+        windowManager = (try? c.decode(WindowManagerConfig.self, forKey: .windowManager)) ?? AppConfig.default.windowManager
     }
 
     static let `default` = AppConfig(
         app: AppSection(menuBarTitle: "🧰", configDir: nil, launchAtLogin: false),
         copyPaste: .default,
-        screenshot: .default
+        screenshot: .default,
+        windowManager: .default
     )
 }
 
