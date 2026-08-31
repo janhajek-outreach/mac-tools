@@ -123,6 +123,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "pollInterval": 0.3,
     "blobDir": "blobs",
     "tabsFile": "tabs.json",
+    "clipboardFile": "clipboard.json",
     "clipboardTabName": "Clipboard",
     "snippetTabs": ["Snippets", "Work"],
     "multiSelectPasteSeparator": "\n",
@@ -158,12 +159,26 @@ omit falls back to its built-in default, so you only need to specify what you wa
 - `key` — a letter, digit, function key (`F1`–`F12`), arrow (`UP`/`DOWN`/`LEFT`/`RIGHT`),
   or named key (`RETURN`, `ENTER`, `ESC`, `TAB`, `SPACE`, `DELETE`).
 - `modifiers` — any of `cmd`, `shift`, `opt`, `ctrl`.
-- `blobDir` / `tabsFile` — relative paths are resolved under the copy-paste data dir;
-  absolute or `~` paths are used as-is.
+- `blobDir` / `tabsFile` / `clipboardFile` — relative paths are resolved under the
+  copy-paste data dir; absolute or `~` paths are used as-is.
 - Restart the app after editing.
 
-Per-tool data lives under `<configDir>/<tool>/` — for copy-paste that's the configured
-`tabsFile` (tabs + items) and `blobDir` (image/file bytes).
+### Storage layout & syncing
+
+Copy-paste persistence is split into two files so you can sync your snippets without the
+constantly-changing clipboard history creating noise:
+
+- **`tabsFile`** (default `tabs.json`) — all tabs and their names/order, plus your custom
+  tab **items**, but with the auto-capture **Clipboard tab's items stripped out**. This
+  file only changes when you edit tabs/snippets, so it's safe to **symlink into a synced
+  dotfiles repo**.
+- **`clipboardFile`** (default `clipboard.json`) — only the volatile clipboard history.
+  Changes on every copy; keep it local (not synced).
+
+JSON is written with **sorted keys**, so editing one value produces a minimal, stable diff
+instead of the whole file appearing to change. Blob bytes for images/files live under
+`blobDir`. On first launch after upgrading, any clipboard items still embedded in an old
+`tabs.json` are migrated automatically into `clipboardFile`.
 
 ## Architecture
 

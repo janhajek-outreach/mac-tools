@@ -23,11 +23,13 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         // Configure storage paths from config before creating stores.
         BlobStore.configure(dir: AppPaths.resolve(config.blobDir, feature: "copy-paste"))
         let tabsURL = AppPaths.dataFile("copy-paste", config.tabsFile)
+        let clipboardURL = AppPaths.dataFile("copy-paste", config.clipboardFile)
         self.store = TabStore(
             maxHistory: config.maxHistory,
             snippetTabNames: config.snippetTabs,
             clipboardTabName: config.clipboardTabName,
-            tabsFileURL: tabsURL
+            tabsFileURL: tabsURL,
+            clipboardFileURL: clipboardURL
         )
         self.model = PickerModel(store: store)
         super.init()

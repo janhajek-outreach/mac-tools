@@ -16,8 +16,12 @@ struct CopyPasteConfig: Codable {
     var pollInterval: Double
     /// Directory (relative to the feature data dir, or absolute/`~`) where image/file blobs live.
     var blobDir: String
-    /// Filename (within the feature data dir) for the persisted tabs.
+    /// Filename (within the feature data dir) for the persisted tabs — everything EXCEPT the
+    /// auto-capture clipboard items (safe to sync / symlink).
     var tabsFile: String
+    /// Filename (within the feature data dir) for the volatile clipboard-tab items
+    /// (changes constantly; intentionally kept separate so it need not be synced).
+    var clipboardFile: String
 
     // Tabs
     /// Name of the fixed auto-capture tab.
@@ -146,6 +150,7 @@ struct CopyPasteConfig: Codable {
         pollInterval = (try? c.decode(Double.self, forKey: .pollInterval)) ?? d.pollInterval
         blobDir   = (try? c.decode(String.self, forKey: .blobDir)) ?? d.blobDir
         tabsFile  = (try? c.decode(String.self, forKey: .tabsFile)) ?? d.tabsFile
+        clipboardFile = (try? c.decode(String.self, forKey: .clipboardFile)) ?? d.clipboardFile
         clipboardTabName = (try? c.decode(String.self, forKey: .clipboardTabName)) ?? d.clipboardTabName
         snippetTabs = (try? c.decode([String].self, forKey: .snippetTabs)) ?? d.snippetTabs
         window    = (try? c.decode(WindowConfig.self, forKey: .window)) ?? d.window
@@ -157,12 +162,13 @@ struct CopyPasteConfig: Codable {
     // Memberwise initializer (retained because we added a custom decoder).
     init(
         showList: Shortcut, search: Shortcut, keys: KeyBindings, maxHistory: Int,
-        blobDir: String, tabsFile: String, clipboardTabName: String, snippetTabs: [String],
+        blobDir: String, tabsFile: String, clipboardFile: String, clipboardTabName: String, snippetTabs: [String],
         window: WindowConfig, ui: UIConfig, multiSelectPasteSeparator: String, deleteTabConfirmWord: String,
         pollInterval: Double
     ) {
         self.showList = showList; self.search = search; self.keys = keys
         self.maxHistory = maxHistory; self.blobDir = blobDir; self.tabsFile = tabsFile
+        self.clipboardFile = clipboardFile
         self.clipboardTabName = clipboardTabName; self.snippetTabs = snippetTabs
         self.window = window; self.ui = ui
         self.multiSelectPasteSeparator = multiSelectPasteSeparator
@@ -196,6 +202,7 @@ struct CopyPasteConfig: Codable {
         maxHistory: 200,
         blobDir: "blobs",
         tabsFile: "tabs.json",
+        clipboardFile: "clipboard.json",
         clipboardTabName: "Clipboard",
         snippetTabs: ["Snippets", "Work"],
         window: WindowConfig(width: 680, height: 560, floating: true, hideOnClickAway: true),
