@@ -107,10 +107,14 @@ struct CopyPasteConfig: Codable {
         var height: Double
         var floating: Bool
         var hideOnClickAway: Bool
+        /// Show the panel centered on the display that currently has focus (the one holding the
+        /// focused window, else the one under the mouse) instead of always the primary display.
+        var followActiveDisplay: Bool
 
-        init(width: Double, height: Double, floating: Bool, hideOnClickAway: Bool) {
+        init(width: Double, height: Double, floating: Bool, hideOnClickAway: Bool, followActiveDisplay: Bool) {
             self.width = width; self.height = height
             self.floating = floating; self.hideOnClickAway = hideOnClickAway
+            self.followActiveDisplay = followActiveDisplay
         }
 
         init(from decoder: Decoder) throws {
@@ -120,6 +124,7 @@ struct CopyPasteConfig: Codable {
             height = (try? c.decode(Double.self, forKey: .height)) ?? d.height
             floating = (try? c.decode(Bool.self, forKey: .floating)) ?? d.floating
             hideOnClickAway = (try? c.decode(Bool.self, forKey: .hideOnClickAway)) ?? d.hideOnClickAway
+            followActiveDisplay = (try? c.decode(Bool.self, forKey: .followActiveDisplay)) ?? d.followActiveDisplay
         }
     }
 
@@ -221,7 +226,7 @@ struct CopyPasteConfig: Codable {
         clipboardFile: "clipboard.json",
         clipboardTabName: "Clipboard",
         snippetTabs: ["Snippets", "Work"],
-        window: WindowConfig(width: 680, height: 560, floating: true, hideOnClickAway: true),
+        window: WindowConfig(width: 680, height: 560, floating: true, hideOnClickAway: true, followActiveDisplay: true),
         ui: UIConfig(zebraStriping: true, zebraOpacity: 0.10, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10, pageSize: 10),
         multiSelectPasteSeparator: "\n",
         deleteTabConfirmWord: "delete",

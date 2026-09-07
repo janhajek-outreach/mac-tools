@@ -104,6 +104,14 @@ struct PanelView: View {
             TextField("Search…", text: $model.query)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
+                .onAppear {
+                    // The field is inserted into the hierarchy in the same update that flips
+                    // `searchActive`, so focus it once it actually exists.
+                    searchFocused = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                        searchFocused = true
+                    }
+                }
                 .onSubmit {
                     if model.hasMultiSelection { model.onCommitMany(model.selectedItems) }
                     else { model.commit() }

@@ -40,7 +40,8 @@ and organise entries across tabs — then paste into whatever app you were using
 | **↖ / ↘** (Home / End) | Jump to the first / last item |
 | **⏎** | Paste selected item(s) into the previous app |
 | **⎋** | Close search, or close window and return focus to the previous app |
-| **⌘F** | Search (type to filter) |
+| **⌘F** | Open the search box (focused immediately) |
+| **any letter / digit** | Starts searching right away (opens the search box and types into it) |
 | **F2** | Edit item inline (plain text only; single selection) |
 | **F3** | Add / edit a label (single selection) |
 | **F5** | Copy selection to another tab (then press the tab number) |
@@ -186,7 +187,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "deleteTabConfirmWord": "delete",
     "showList": { "key": "L", "modifiers": ["cmd"] },
     "search":   { "key": "F", "modifiers": ["cmd"] },
-    "window": { "width": 680, "height": 560, "floating": true, "hideOnClickAway": true },
+    "window": { "width": 680, "height": 560, "floating": true, "hideOnClickAway": true, "followActiveDisplay": true },
     "ui": { "zebraStriping": true, "zebraOpacity": 0.05, "selectionOpacity": 0.22, "showFooterHints": true, "rowMaxLines": 10, "pageSize": 10 },
     "keys": {
       "editText":   { "key": "F2" },
@@ -220,6 +221,9 @@ omit falls back to its built-in default, so you only need to specify what you wa
   or named key (`RETURN`, `ENTER`, `ESC`, `TAB`, `SPACE`, `DELETE`, `PAGEUP`, `PAGEDOWN`,
   `HOME`, `END`).
 - `modifiers` — any of `cmd`, `shift`, `opt`, `ctrl`.
+- `window.followActiveDisplay` — when `true` (default) the panel opens centered on the
+  display you're working on (the one holding the focused window, else the one under the
+  mouse). Set to `false` to always use the primary display.
 - `blobDir` / `tabsFile` / `clipboardFile` — relative paths are resolved under the
   copy-paste data dir; absolute or `~` paths are used as-is.
 - Restart the app after editing.
@@ -257,6 +261,7 @@ Sources/MacTools/
     AppPaths.swift                   ~/.config/mac-tools paths
     Shortcut.swift                   JSON shortcut model + key/modifier mapping
     HotKey.swift                     multi-hotkey Carbon registration
+    ActiveScreen.swift               resolves the display that currently has focus
   Features/
     CopyPaste/
       CopyPasteFeature.swift         window, hotkey, key routing, paste

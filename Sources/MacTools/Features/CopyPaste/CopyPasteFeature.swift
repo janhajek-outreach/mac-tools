@@ -99,9 +99,19 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     private func showWindow() {
         previousApp = NSWorkspace.shared.frontmostApplication
         model.reset()
+        positionOnActiveScreen()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         installLocalKeyMonitor()
+    }
+
+    /// Center the panel on the display the user is actually working on (the one holding the
+    /// focused window, else the one under the mouse) rather than always the primary display.
+    private func positionOnActiveScreen() {
+        guard config.window.followActiveDisplay else { return }
+        let size = CGSize(width: config.window.width, height: config.window.height)
+        guard let frame = ActiveScreen.centeredFrame(size: size, preferring: previousApp) else { return }
+        window.setFrame(frame, display: false)
     }
 
     private func toggleWindow() {
@@ -353,7 +363,26 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
         if isCancel(event) { handleEscape(); return nil }
 
+        // ---- Type-to-search: any plain letter/digit starts filtering immediately ----
+        if !model.searchActive, let typed = typedSearchCharacter(event) {
+            model.activateSearch()
+            model.query.append(typed)
+            model.selectSingle(0)
+            return nil
+        }
+
         return event
+    }
+
+    /// Returns the character to seed the search box with when the user just starts typing
+    /// (plain a-z / A-Z / 0-9, optionally with shift — never with cmd/ctrl/opt).
+    private func typedSearchCharacter(_ event: NSEvent) -> Character? {
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard !mods.contains(.command), !mods.contains(.control),
+              !mods.contains(.option), !mods.contains(.function) else { return nil }
+        guard let chars = event.characters, chars.count == 1, let c = chars.first else { return nil }
+        guard c.isLetter || c.isNumber else { return nil }
+        return c
     }
 
     /// Reorder the current selection (single or block) by delta and keep selection visible.
