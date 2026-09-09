@@ -173,6 +173,14 @@ struct PanelView: View {
                         .textFieldStyle(.roundedBorder)
                         .focused($editFocused)
                         .lineLimit(1...max(1, config.ui.rowMaxLines))
+                        .onAppear {
+                            // The field is inserted into the hierarchy in the same update that
+                            // sets `editingIndex`, so focus it once it actually exists.
+                            editFocused = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                                editFocused = true
+                            }
+                        }
                 } else {
                     Text(previewText(item))
                         .lineLimit(1...max(1, config.ui.rowMaxLines))
