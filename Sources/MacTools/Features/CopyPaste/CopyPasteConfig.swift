@@ -220,7 +220,7 @@ struct CopyPasteConfig: Codable {
             cancel:     Shortcut(key: "ESC"),
             quit:       Shortcut(key: "Q", modifiers: ["cmd"])
         ),
-        maxHistory: 200,
+        maxHistory: 500,
         blobDir: "blobs",
         tabsFile: "tabs.json",
         clipboardFile: "clipboard.json",

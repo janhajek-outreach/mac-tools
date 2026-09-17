@@ -399,7 +399,9 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
             model.selection = delta < 0 ? (newIndices.min() ?? model.selection) : (newIndices.max() ?? model.selection)
         } else if let id = currentItemID {
             store.move(id, in: tabIndex, by: delta)
-            if delta < 0 { model.moveSelectionUp() } else { model.moveSelectionDown() }
+            // Follow the moved row; reordering never wraps, so clamp rather than wrap.
+            let last = max(0, model.filtered.count - 1)
+            model.selectSingle(min(max(0, model.selection + delta), last))
         }
     }
 

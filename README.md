@@ -120,9 +120,27 @@ _Planned: alt-tab, half/quarter snapping._
 - macOS 13+
 - Xcode toolchain installed (`swift`, `xcodebuild`)
 - **Accessibility permission** (for Enter-to-paste). The app prompts on first launch;
-  grant it under System Settings → Privacy & Security → Accessibility.
+  grant it under System Settings → Privacy & Security → Accessibility. Run
+  `./setup-signing.sh` once first so you only have to grant it once (see below).
 
 ## Build & install
+
+**One-time: set up code signing.**
+
+```bash
+./setup-signing.sh
+```
+
+This creates a self-signed code-signing certificate named `mac-tools-signing` in your login
+keychain. macOS ties the Accessibility grant to the app's code signature, so signing with a
+stable identity means you grant Accessibility **once** instead of after every rebuild.
+`install.sh` works without it, but falls back to ad-hoc signing and the permission is lost on
+each install. The script is idempotent — re-running it is a no-op once the cert exists.
+
+> On the first build after creating the cert, macOS asks for your keychain password. Click
+> **Always Allow** (not just *Allow*) so later builds sign without prompting.
+
+**Then, every time:**
 
 ```bash
 ./install.sh              # build + sign + install to ~/Applications + relaunch
@@ -176,7 +194,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "launchAtLogin": false
   },
   "copyPaste": {
-    "maxHistory": 200,
+    "maxHistory": 500,
     "pollInterval": 0.3,
     "blobDir": "blobs",
     "tabsFile": "tabs.json",
@@ -253,6 +271,7 @@ Each tool implements the `Feature` protocol and is registered in `buildFeatures(
 ```
 Package.swift                        SPM manifest
 install.sh                           build + bundle + sign + install-to-~/Applications
+setup-signing.sh                     one-time: self-signed cert for a stable signature
 Sources/MacTools/
   main.swift                         app delegate, shared status-bar menu, feature registry
   Core/

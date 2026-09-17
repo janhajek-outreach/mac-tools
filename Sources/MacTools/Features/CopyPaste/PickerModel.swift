@@ -93,16 +93,19 @@ final class PickerModel: ObservableObject {
     }
 
     /// Plain up/down: collapses any multi-selection back to a single row.
+    /// Wraps around at the list edges (top -> bottom, bottom -> top).
     func moveSelectionUp() {
-        guard !filtered.isEmpty else { return }
-        selection = max(0, selection - 1)
+        let count = filtered.count
+        guard count > 0 else { return }
+        selection = selection <= 0 ? count - 1 : selection - 1
         selectionAnchor = selection
         selectedIndices = [selection]
     }
 
     func moveSelectionDown() {
-        guard !filtered.isEmpty else { return }
-        selection = min(filtered.count - 1, selection + 1)
+        let count = filtered.count
+        guard count > 0 else { return }
+        selection = selection >= count - 1 ? 0 : selection + 1
         selectionAnchor = selection
         selectedIndices = [selection]
     }
