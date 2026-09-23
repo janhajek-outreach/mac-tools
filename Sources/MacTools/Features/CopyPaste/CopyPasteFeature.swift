@@ -17,6 +17,8 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     private var localKeyMonitor: Any?
 
     private var previousApp: NSRunningApplication?
+    /// The exact window that had focus when the panel opened, so we can raise just that one.
+    private var previousWindow: AXUIElement?
 
     init(config: CopyPasteConfig) {
         self.config = config
@@ -98,6 +100,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
 
     private func showWindow() {
         previousApp = NSWorkspace.shared.frontmostApplication
+        previousWindow = ActiveScreen.focusedWindow(of: previousApp)
         model.reset()
         positionOnActiveScreen()
         NSApp.activate(ignoringOtherApps: true)
@@ -110,8 +113,21 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     private func positionOnActiveScreen() {
         guard config.window.followActiveDisplay else { return }
         let size = CGSize(width: config.window.width, height: config.window.height)
-        guard let frame = ActiveScreen.centeredFrame(size: size, preferring: previousApp) else { return }
+        guard let frame = ActiveScreen.centeredFrame(size: size, holding: previousWindow) else { return }
         window.setFrame(frame, display: false)
+    }
+
+    /// Return focus to exactly the window the user came from.
+    ///
+    /// We deliberately avoid `.activateAllWindows`: that raises *every* window of the target app,
+    /// so pasting into (say) a browser window on one display would also yank that browser's
+    /// windows on other displays above whatever the user had in front there.
+    private func restorePreviousFocus() {
+        if let win = previousWindow {
+            AXUIElementPerformAction(win, kAXRaiseAction as CFString)
+        }
+        previousApp?.activate()
+        previousWindow = nil
     }
 
     private func toggleWindow() {
@@ -126,7 +142,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     private func hideWindow(returnFocus: Bool = false) {
         removeLocalKeyMonitor()
         window.orderOut(nil)
-        if returnFocus { previousApp?.activate() }
+        if returnFocus { restorePreviousFocus() } else { previousWindow = nil }
     }
 
     private func pasteAndHide(_ item: ClipItem) {
@@ -144,10 +160,10 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
             return
         }
 
-        // Hide our window and reactivate the previous app before pasting into it.
+        // Hide our window and refocus the window we came from before pasting into it.
         removeLocalKeyMonitor()
         window.orderOut(nil)
-        previousApp?.activate(options: [.activateAllWindows])
+        restorePreviousFocus()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             Paster.simulatePaste()
@@ -170,7 +186,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
         removeLocalKeyMonitor()
         window.orderOut(nil)
-        previousApp?.activate(options: [.activateAllWindows])
+        restorePreviousFocus()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             Paster.simulatePaste()
         }

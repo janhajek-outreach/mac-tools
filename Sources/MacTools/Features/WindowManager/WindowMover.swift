@@ -225,7 +225,9 @@ enum WindowMover {
     static func placeAndRaise(_ window: AXUIElement, in rect: CGRect, pid: pid_t) {
         setWindowFrame(window, rect)
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-        NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+        // No `.activateAllWindows`: the raise above already fronts the window we targeted, and
+        // raising the app's other windows would reshuffle what's on top of other displays.
+        NSRunningApplication(processIdentifier: pid)?.activate()
     }
 
     /// Convert the center of a CG (top-left) rect to an AppKit screen point (bottom-left).

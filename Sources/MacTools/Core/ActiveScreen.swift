@@ -13,7 +13,13 @@ enum ActiveScreen {
     /// The screen the user currently has focus on, or nil if there are no screens.
     static func current(preferring app: NSRunningApplication? = nil) -> NSScreen? {
         let target = app ?? NSWorkspace.shared.frontmostApplication
-        if let frame = focusedWindowFrame(of: target), let screen = screen(containingCG: frame) {
+        return current(holding: focusedWindow(of: target))
+    }
+
+    /// Same as `current(preferring:)` but for an already-resolved AX window, so callers that
+    /// captured the window earlier don't pay for a second Accessibility round-trip.
+    static func current(holding window: AXUIElement?) -> NSScreen? {
+        if let window, let f = frame(of: window), let screen = screen(containingCG: f) {
             return screen
         }
         if let screen = screenUnderMouse() { return screen }
@@ -22,7 +28,16 @@ enum ActiveScreen {
 
     /// Centers `rect`'s size within the active screen's visible area (AppKit bottom-left space).
     static func centeredFrame(size: CGSize, preferring app: NSRunningApplication? = nil) -> NSRect? {
-        guard let screen = current(preferring: app) else { return nil }
+        centeredFrame(size: size, on: current(preferring: app))
+    }
+
+    /// Centers `size` on the screen holding `window` (falling back to mouse/main screen).
+    static func centeredFrame(size: CGSize, holding window: AXUIElement?) -> NSRect? {
+        centeredFrame(size: size, on: current(holding: window))
+    }
+
+    private static func centeredFrame(size: CGSize, on screen: NSScreen?) -> NSRect? {
+        guard let screen else { return nil }
         let vis = screen.visibleFrame
         return NSRect(
             x: vis.midX - size.width / 2,
@@ -32,19 +47,32 @@ enum ActiveScreen {
         )
     }
 
-    // MARK: - Helpers
-
-    /// Frame of the app's focused window in CG (top-left origin) space.
-    private static func focusedWindowFrame(of app: NSRunningApplication?) -> CGRect? {
+    /// The app's currently focused window, or nil without Accessibility permission.
+    ///
+    /// Callers can hold on to this element to later raise *that one window* instead of
+    /// activating the whole app (which would drag its windows on other displays forward too).
+    static func focusedWindow(of app: NSRunningApplication?) -> AXUIElement? {
         guard let app = app, AXIsProcessTrusted() else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         var raw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &raw) == .success,
               let raw = raw else { return nil }
-        let window = raw as! AXUIElement
+        // Force-cast is safe: the focused-window attribute is always an AXUIElement.
+        return (raw as! AXUIElement)
+    }
+
+    /// Frame of an AX window in CG (top-left origin) space.
+    static func frame(of window: AXUIElement) -> CGRect? {
         guard let origin = axValue(window, kAXPositionAttribute, .cgPoint, as: CGPoint.self),
               let size = axValue(window, kAXSizeAttribute, .cgSize, as: CGSize.self) else { return nil }
         return CGRect(origin: origin, size: size)
+    }
+
+    // MARK: - Helpers
+
+    /// Frame of the app's focused window in CG (top-left origin) space.
+    private static func focusedWindowFrame(of app: NSRunningApplication?) -> CGRect? {
+        focusedWindow(of: app).flatMap(frame(of:))
     }
 
     private static func screen(containingCG frame: CGRect) -> NSScreen? {
