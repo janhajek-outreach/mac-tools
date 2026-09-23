@@ -243,6 +243,22 @@ final class TabStore: ObservableObject {
         save(affectedTab: tabIndex)
     }
 
+    /// Move the given items to the top of their tab, preserving their relative order.
+    /// Used after a paste so the most recently used item is always first.
+    func promoteToTop(_ ids: [UUID], in tabIndex: Int) {
+        guard !ids.isEmpty, tabs.indices.contains(tabIndex) else { return }
+        let idSet = Set(ids)
+        var items = tabs[tabIndex].items
+        let promoted = items.filter { idSet.contains($0.id) }
+        guard !promoted.isEmpty else { return }
+        // Already at the top in the same order? Nothing to do (avoids a pointless write).
+        if Array(items.prefix(promoted.count)).map(\.id) == promoted.map(\.id) { return }
+        items.removeAll { idSet.contains($0.id) }
+        items.insert(contentsOf: promoted, at: 0)
+        tabs[tabIndex].items = items
+        save(affectedTab: tabIndex)
+    }
+
     // MARK: Helpers
 
     private func mutate(_ id: UUID, in tabIndex: Int, _ change: (inout ClipItem) -> Void) {

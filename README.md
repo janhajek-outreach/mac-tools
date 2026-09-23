@@ -24,6 +24,11 @@ and organise entries across tabs — then paste into whatever app you were using
 - Add / rename / remove tabs at runtime (see keys below). Non-empty tabs require typing a
   confirmation word (default `delete`) before removal.
 
+**Most-recently-used ordering**
+- Pasting an item moves it to the top of its tab, so the things you use most stay within
+  reach. With a multi-selection, all pasted items move to the top preserving their relative
+  order. Set `copyPaste.promotePastedToTop` to `false` to keep the list order untouched.
+
 **Multi-select**
 - Hold **⇧** with the select-up/down keys (or shift-click a row) to select a range.
 - With more than one item selected, only **copy-to-tab**, **reorder**, **delete**, and
@@ -203,6 +208,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "snippetTabs": ["Snippets", "Work"],
     "multiSelectPasteSeparator": "\n",
     "deleteTabConfirmWord": "delete",
+    "promotePastedToTop": true,
     "showList": { "key": "L", "modifiers": ["cmd"] },
     "search":   { "key": "F", "modifiers": ["cmd"] },
     "window": { "width": 680, "height": 560, "floating": true, "hideOnClickAway": true, "followActiveDisplay": true },

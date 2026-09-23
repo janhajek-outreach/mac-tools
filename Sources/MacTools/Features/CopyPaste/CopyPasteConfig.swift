@@ -38,6 +38,8 @@ struct CopyPasteConfig: Codable {
     var multiSelectPasteSeparator: String
     /// Word the user must type to confirm deleting a non-empty tab.
     var deleteTabConfirmWord: String
+    /// After pasting, move the pasted item(s) to the top of their tab (most-recently-used order).
+    var promotePastedToTop: Bool
 
     struct KeyBindings: Codable {
         var editText: Shortcut          // inline edit (text only)
@@ -174,6 +176,7 @@ struct CopyPasteConfig: Codable {
         ui        = (try? c.decode(UIConfig.self, forKey: .ui)) ?? d.ui
         multiSelectPasteSeparator = (try? c.decode(String.self, forKey: .multiSelectPasteSeparator)) ?? d.multiSelectPasteSeparator
         deleteTabConfirmWord = (try? c.decode(String.self, forKey: .deleteTabConfirmWord)) ?? d.deleteTabConfirmWord
+        promotePastedToTop = (try? c.decode(Bool.self, forKey: .promotePastedToTop)) ?? d.promotePastedToTop
     }
 
     // Memberwise initializer (retained because we added a custom decoder).
@@ -181,7 +184,7 @@ struct CopyPasteConfig: Codable {
         showList: Shortcut, search: Shortcut, keys: KeyBindings, maxHistory: Int,
         blobDir: String, tabsFile: String, clipboardFile: String, clipboardTabName: String, snippetTabs: [String],
         window: WindowConfig, ui: UIConfig, multiSelectPasteSeparator: String, deleteTabConfirmWord: String,
-        pollInterval: Double
+        pollInterval: Double, promotePastedToTop: Bool = true
     ) {
         self.showList = showList; self.search = search; self.keys = keys
         self.maxHistory = maxHistory; self.blobDir = blobDir; self.tabsFile = tabsFile
@@ -191,6 +194,7 @@ struct CopyPasteConfig: Codable {
         self.multiSelectPasteSeparator = multiSelectPasteSeparator
         self.deleteTabConfirmWord = deleteTabConfirmWord
         self.pollInterval = pollInterval
+        self.promotePastedToTop = promotePastedToTop
     }
 
     static let `default` = CopyPasteConfig(
@@ -230,6 +234,7 @@ struct CopyPasteConfig: Codable {
         ui: UIConfig(zebraStriping: true, zebraOpacity: 0.10, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10, pageSize: 10),
         multiSelectPasteSeparator: "\n",
         deleteTabConfirmWord: "delete",
-        pollInterval: 0.3
+        pollInterval: 0.3,
+        promotePastedToTop: true
     )
 }

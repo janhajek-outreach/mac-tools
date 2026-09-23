@@ -130,6 +130,9 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     }
 
     private func pasteAndHide(_ item: ClipItem) {
+        // Most-recently-used ordering: the item we just pasted moves to the top of its tab.
+        promoteToTop([item])
+
         // Put the content on the clipboard first.
         Paster.setClipboard(item)
         monitor.syncChangeCount()
@@ -155,6 +158,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     private func pasteManyAndHide(_ items: [ClipItem]) {
         let texts = items.compactMap { $0.kind == .text ? $0.text : nil }
         guard !texts.isEmpty else { hideWindow(returnFocus: true); return }
+        promoteToTop(items)
         let joined = texts.joined(separator: config.multiSelectPasteSeparator)
         Paster.setPlainText(joined)
         monitor.syncChangeCount()
@@ -170,6 +174,15 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             Paster.simulatePaste()
         }
+    }
+
+    /// Move the pasted items to the top of the tab they live in, and keep the picker's
+    /// selection pointing at the (now top-most) rows.
+    private func promoteToTop(_ items: [ClipItem]) {
+        guard config.promotePastedToTop, !items.isEmpty else { return }
+        store.promoteToTop(items.map(\.id), in: store.currentTab)
+        model.selectSingle(0)
+        if items.count > 1 { model.selectedIndices = Set(0..<items.count) }
     }
 
     // MARK: Local key handling
