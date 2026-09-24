@@ -23,10 +23,29 @@ struct VisualEffectBackground: NSViewRepresentable {
     }
 }
 
+/// Spacing/sizing of the tiles layout, shared by the view and keyboard navigation.
+enum TileMetrics {
+    static let spacing: CGFloat = 8
+    static let padding: CGFloat = 10
+    /// Around each tile, where the selection background shows.
+    static let inset: CGFloat = 4
+    static let caption: CGFloat = 20
+
+    static func columns(width: Double, tile: Double) -> Int {
+        max(1, Int((CGFloat(width) - 2 * padding + spacing) / (CGFloat(tile) + 2 * inset + spacing)))
+    }
+
+    /// Rows that fit in the list area (window minus the clipboard line, tab bar and footer).
+    static func rowsPerPage(height: Double, tile: Double) -> Int {
+        max(1, Int((CGFloat(height) - 150) / (CGFloat(tile) + 2 * inset + caption + spacing)))
+    }
+}
+
 /// GIF thumbnail that tracks whether its row is on screen (LazyVStack fires onAppear /
 /// onDisappear as rows scroll in and out) and animates according to `ui.animateGifs`.
 private struct GIFThumbnailCell: View {
     let source: URL
+    let maxPixelSize: Int
     let mode: String
     let windowVisible: Bool
     let isSelected: Bool
@@ -41,7 +60,7 @@ private struct GIFThumbnailCell: View {
     }
 
     var body: some View {
-        AnimatedGIFView(source: source, allowed: allowed)
+        AnimatedGIFView(source: source, maxPixelSize: maxPixelSize, allowed: allowed)
             .onAppear { GIFVisibility.set(source, onScreen: true) }
             .onDisappear { GIFVisibility.set(source, onScreen: false) }
     }
@@ -76,7 +95,7 @@ struct PanelView: View {
                 searchField
                 Divider()
             }
-            listBody
+            if store.layout(ofTab: store.currentTab) == .tiles { tileBody } else { listBody }
             Divider()
             if config.ui.showFooterHints { footer }
         }
@@ -180,6 +199,133 @@ struct PanelView: View {
         }
     }
 
+    // MARK: Tiles
+
+    private var tileBody: some View {
+        let size = CGFloat(config.ui.tileSize)
+        let columns = Array(repeating: GridItem(.fixed(size + 2 * TileMetrics.inset), spacing: TileMetrics.spacing),
+                            count: model.columns)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                if model.filtered.isEmpty {
+                    Text(store.currentItems.isEmpty ? "Empty." : "No matches.")
+                        .foregroundStyle(.secondary)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                LazyVGrid(columns: columns, alignment: .leading, spacing: TileMetrics.spacing) {
+                    ForEach(Array(model.filtered.enumerated()), id: \.offset) { index, item in
+                        tile(index: index, item: item, size: size)
+                            .id(index)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if NSEvent.modifierFlags.contains(.shift) {
+                                    model.selection = index
+                                    model.selectRangeToAnchor()
+                                } else {
+                                    model.selectSingle(index)
+                                    if model.editingIndex == nil { model.commit() }
+                                }
+                            }
+                    }
+                }
+                .padding(TileMetrics.padding)
+            }
+            .onChange(of: model.selection) { sel in
+                withAnimation(.linear(duration: 0.08)) { proxy.scrollTo(sel, anchor: .center) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tile(index: Int, item: ClipItem, size: CGFloat) -> some View {
+        let selected = model.selectedIndices.contains(index)
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                tileContent(item: item, index: index, size: size)
+                    .frame(width: size, height: size)
+                    .background(Color.primary.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                statusIcon(for: item)
+                    .padding(5)
+            }
+            if model.editingIndex == index {
+                TextField("", text: $model.editingText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .focused($editFocused)
+                    .onAppear {
+                        editFocused = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { editFocused = true }
+                    }
+            } else {
+                Text(tileCaption(item))
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(item.label == nil ? .secondary : .primary)
+                    .frame(width: size)
+            }
+        }
+        .frame(width: size)
+        .padding(TileMetrics.inset)
+        .opacity(store.isMissing(item) ? 0.4 : 1)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(selected ? Color.accentColor.opacity(index == model.selection
+                                                           ? config.ui.selectionOpacity
+                                                           : config.ui.selectionOpacity * 0.6)
+                               : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(index == model.selection ? Color.accentColor : Color.clear, lineWidth: 2)
+        )
+    }
+
+    @ViewBuilder
+    private func tileContent(item: ClipItem, index: Int, size: CGFloat) -> some View {
+        if item.kind == .text {
+            Text((item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+                .font(.caption)
+                .lineLimit(Int(size / 15))
+                .padding(8)
+                .frame(width: size, height: size, alignment: .topLeading)
+        } else {
+            thumbnail(for: item, index: index, size: size)
+        }
+    }
+
+    /// Label if set, else the image/file name, else the first line of text.
+    private func tileCaption(_ item: ClipItem) -> String {
+        if let label = item.label, !label.isEmpty { return label }
+        if item.kind == .text {
+            return (item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                .components(separatedBy: .newlines).first ?? ""
+        }
+        return previewText(item)
+    }
+
+    /// Missing (⚠︎) / linked (🔗) marker shared by rows and tiles.
+    @ViewBuilder
+    private func statusIcon(for item: ClipItem) -> some View {
+        if store.isMissing(item) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .help(item.isReference
+                      ? "Original file is missing — can't paste"
+                      : "Stored copy is missing — can't paste")
+        } else if item.isReference {
+            Image(systemName: "link")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .help("Linked — not stored, may go missing if the original is deleted")
+        }
+    }
+
+    // MARK: List row
+
     @ViewBuilder
     private func row(index: Int, item: ClipItem) -> some View {
         HStack(alignment: .top, spacing: 10) {
@@ -188,7 +334,7 @@ struct PanelView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 30, alignment: .trailing)
 
-            thumbnail(for: item, index: index)
+            thumbnail(for: item, index: index, size: 80)
 
             VStack(alignment: .leading, spacing: 2) {
                 if let label = item.label, !label.isEmpty {
@@ -220,19 +366,7 @@ struct PanelView: View {
                 Text(kindBadge(item.kind))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                if store.isMissing(item) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .help(item.isReference
-                              ? "Original file is missing — can't paste"
-                              : "Stored copy is missing — can't paste")
-                } else if item.isReference {
-                    Image(systemName: "link")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .help("Linked — not stored, may go missing if the original is deleted")
-                }
+                statusIcon(for: item)
             }
             .padding(.top, 3)
         }
@@ -252,34 +386,38 @@ struct PanelView: View {
         return index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(config.ui.zebraOpacity)
     }
 
+    /// Image/GIF thumbnail (or a placeholder / file icon) at `size` points — 80 in the list,
+    /// `ui.tileSize` in tiles. Thumbnails are decoded at 2x of that.
     @ViewBuilder
-    private func thumbnail(for item: ClipItem, index: Int) -> some View {
+    private func thumbnail(for item: ClipItem, index: Int, size: CGFloat) -> some View {
         let url = item.kind == .image && !store.isMissing(item) ? store.contentURL(for: item, inTab: store.currentTab) : nil
+        let pixels = Int(size * 2)
         if let url, BlobStore.isGIF(url) {
             GIFThumbnailCell(
                 source: url,
+                maxPixelSize: pixels,
                 mode: config.ui.animateGifs,
                 windowVisible: model.isVisible,
                 isSelected: index == model.selection
             )
-            .frame(width: 80, height: 80)
+            .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: 6))
-        } else if let url, let nsImage = BlobStore.thumbnail(at: url) {
+        } else if let url, let nsImage = BlobStore.thumbnail(at: url, maxPixelSize: pixels) {
             Image(nsImage: nsImage)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 80, height: 80)
+                .frame(width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
         } else if item.kind == .image {
             Image(systemName: "photo")
-                .font(.title2)
+                .font(size > 100 ? .largeTitle : .title2)
                 .foregroundStyle(.secondary)
-                .frame(width: 80, height: 80)
+                .frame(width: size, height: size)
         } else if item.kind == .file {
             Image(systemName: "doc.fill")
-                .font(.title2)
+                .font(size > 100 ? .system(size: 48) : .title2)
                 .foregroundStyle(store.isMissing(item) ? Color.secondary : Color.blue)
-                .frame(width: 40, height: 40)
+                .frame(width: size > 100 ? size : 40, height: size > 100 ? size : 40)
         }
     }
 
@@ -449,6 +587,7 @@ struct PanelView: View {
             Text("\(k.editText.displayLabel) edit").hint()
             Text("\(k.copyToTab.displayLabel)→tab").hint()
             Text("\(k.downloadImage.displayLabel) img").hint()
+            Text("\(k.toggleLayout.displayLabel) \(store.layout(ofTab: store.currentTab) == .tiles ? "list" : "tiles")").hint()
             Text("\(k.label.displayLabel) label").hint()
             Text("\(k.delete.displayLabel) del").hint()
             Spacer()

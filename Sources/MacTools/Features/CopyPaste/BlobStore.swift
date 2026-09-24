@@ -100,23 +100,27 @@ enum BlobStore {
 
     /// Drop in-memory thumbnails/frames for a file that's being deleted.
     static func evict(_ fileURL: URL) {
-        imageCache.removeObject(forKey: fileURL.path as NSString)
+        for px in thumbnailSizes { imageCache.removeObject(forKey: "\(fileURL.path)@\(px)" as NSString) }
         GIFFrameCache.remove(fileURL)
     }
 
-    /// Downscaled thumbnail (160px, i.e. 80pt at 2x) for an image file — a blob or a linked
-    /// original. Cached in memory so list redraws don't re-read the file.
-    static func thumbnail(at fileURL: URL) -> NSImage? {
-        let key = fileURL.path as NSString
+    /// Pixel sizes thumbnails have been made at (so `evict` can find every cached variant).
+    private static var thumbnailSizes = Set<Int>()
+
+    /// Downscaled thumbnail (default 160px, i.e. 80pt at 2x) for an image file — a blob or a
+    /// linked original. Cached in memory per size so redraws don't re-read the file.
+    static func thumbnail(at fileURL: URL, maxPixelSize: Int = 160) -> NSImage? {
+        let key = "\(fileURL.path)@\(maxPixelSize)" as NSString
         if let cached = imageCache.object(forKey: key) { return cached }
         let opts: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 160,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ]
         guard let src = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
               let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
         let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        thumbnailSizes.insert(maxPixelSize)
         imageCache.setObject(image, forKey: key, cost: cg.bytesPerRow * cg.height)
         return image
     }

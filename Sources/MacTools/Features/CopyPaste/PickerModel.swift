@@ -221,6 +221,36 @@ final class PickerModel: ObservableObject {
 
     func commit() { if let item = selectedItem { onCommit(item) } }
 
+    // MARK: Tiles layout
+
+    /// Tiles per row and rows per page in the tiles layout (set from the window/tile size).
+    var columns = 4
+    var pageRows = 2
+
+    var isTiles: Bool { store.layout(ofTab: store.currentTab) == .tiles }
+
+    /// Tiles: move the cursor by `delta` items (±1 for left/right, ±columns for up/down),
+    /// clamped to the list. With `extend`, grow the range from the anchor instead.
+    func moveInGrid(by delta: Int, extend: Bool = false) {
+        let count = filtered.count
+        guard count > 0 else { return }
+        var target = selection + delta
+        if target < 0 { guard abs(delta) == 1 else { return }; target = 0 }
+        if target >= count {
+            // Down into a shorter last row lands on the last item; from the last row, stay put.
+            let cols = max(1, columns)
+            guard abs(delta) == 1 || selection / cols < (count - 1) / cols else { return }
+            target = count - 1
+        }
+        selection = target
+        if extend {
+            rebuildRangeFromAnchor()
+        } else {
+            selectionAnchor = selection
+            selectedIndices = [selection]
+        }
+    }
+
     func activateSearch() { searchActive = true }
 
     func escape() {

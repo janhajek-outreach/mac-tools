@@ -1,16 +1,25 @@
 import Foundation
 import Combine
 
+/// How a tab's items are shown in the picker.
+enum TabLayout: String, Codable {
+    case list
+    case tiles
+}
+
 /// A named collection of items. Tab 0 is the auto-capture "Clipboard" tab.
 struct ClipTab: Codable, Identifiable {
     var id: UUID
     var name: String
     var items: [ClipItem]
+    /// Layout chosen for this tab (⌘G). Nil = the configured default; omitted from JSON then.
+    var layout: TabLayout?
 
-    init(id: UUID = UUID(), name: String, items: [ClipItem] = []) {
+    init(id: UUID = UUID(), name: String, items: [ClipItem] = [], layout: TabLayout? = nil) {
         self.id = id
         self.name = name
         self.items = items
+        self.layout = layout
     }
 }
 
@@ -131,6 +140,24 @@ final class TabStore: ObservableObject {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         tabs[index].name = trimmed
+        saveTabs()
+    }
+
+    // MARK: Layout
+
+    /// Layout used by tabs that haven't chosen one (`ui.defaultLayout`).
+    var defaultLayout: TabLayout = .list
+
+    func layout(ofTab index: Int) -> TabLayout {
+        guard tabs.indices.contains(index) else { return defaultLayout }
+        return tabs[index].layout ?? defaultLayout
+    }
+
+    /// Switch a tab between list and tiles. Stored per tab in tabs.json (the Clipboard tab's
+    /// entry there too — only its items live in clipboard.json).
+    func toggleLayout(ofTab index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        tabs[index].layout = layout(ofTab: index) == .list ? .tiles : .list
         saveTabs()
     }
 

@@ -70,6 +70,11 @@ struct CopyPasteConfig: Codable {
         var renameTab: Shortcut
         var closeTab: Shortcut
         var downloadImage: Shortcut     // download linked image(s) as new item(s)
+        var toggleLayout: Shortcut      // switch the current tab between list and tiles
+        var selectLeft: Shortcut        // tiles: previous item
+        var selectRight: Shortcut       // tiles: next item
+        var extendLeft: Shortcut        // tiles: extend selection to the previous item
+        var extendRight: Shortcut       // tiles: extend selection to the next item
         var commit: Shortcut            // paste
         var cancel: Shortcut            // escape / close
         var quit: Shortcut
@@ -81,9 +86,17 @@ struct CopyPasteConfig: Codable {
             home: Shortcut, end: Shortcut, prevTab: Shortcut, nextTab: Shortcut,
             newTab: Shortcut, renameTab: Shortcut, closeTab: Shortcut,
             commit: Shortcut, cancel: Shortcut, quit: Shortcut,
-            downloadImage: Shortcut = Shortcut(key: "D", modifiers: ["cmd"])
+            downloadImage: Shortcut = Shortcut(key: "D", modifiers: ["cmd"]),
+            toggleLayout: Shortcut = Shortcut(key: "G", modifiers: ["cmd"]),
+            selectLeft: Shortcut = Shortcut(key: "LEFT"),
+            selectRight: Shortcut = Shortcut(key: "RIGHT"),
+            extendLeft: Shortcut = Shortcut(key: "LEFT", modifiers: ["shift"]),
+            extendRight: Shortcut = Shortcut(key: "RIGHT", modifiers: ["shift"])
         ) {
             self.downloadImage = downloadImage
+            self.toggleLayout = toggleLayout
+            self.selectLeft = selectLeft; self.selectRight = selectRight
+            self.extendLeft = extendLeft; self.extendRight = extendRight
             self.editText = editText; self.label = label; self.copyToTab = copyToTab
             self.delete = delete; self.moveUp = moveUp; self.moveDown = moveDown
             self.selectUp = selectUp; self.selectDown = selectDown
@@ -113,6 +126,9 @@ struct CopyPasteConfig: Codable {
             closeTab = g(.closeTab, d.closeTab); commit = g(.commit, d.commit)
             cancel = g(.cancel, d.cancel); quit = g(.quit, d.quit)
             downloadImage = g(.downloadImage, d.downloadImage)
+            toggleLayout = g(.toggleLayout, d.toggleLayout)
+            selectLeft = g(.selectLeft, d.selectLeft); selectRight = g(.selectRight, d.selectRight)
+            extendLeft = g(.extendLeft, d.extendLeft); extendRight = g(.extendRight, d.extendRight)
         }
     }
 
@@ -154,12 +170,18 @@ struct CopyPasteConfig: Codable {
         /// GIF thumbnail animation: "visible" (on-screen rows while the window is shown),
         /// "selected" (only the highlighted row), or "off" (still first frame).
         var animateGifs: String
+        /// Tile edge length (pt) in the tiles layout.
+        var tileSize: Double
+        /// Layout for tabs that haven't been switched with ⌘G: "list" or "tiles".
+        var defaultLayout: String
 
-        init(zebraStriping: Bool, zebraOpacity: Double, selectionOpacity: Double, showFooterHints: Bool, rowMaxLines: Int, pageSize: Int, animateGifs: String = "visible") {
+        init(zebraStriping: Bool, zebraOpacity: Double, selectionOpacity: Double, showFooterHints: Bool, rowMaxLines: Int, pageSize: Int, animateGifs: String = "visible",
+             tileSize: Double = 150, defaultLayout: String = "list") {
             self.zebraStriping = zebraStriping; self.zebraOpacity = zebraOpacity
             self.selectionOpacity = selectionOpacity; self.showFooterHints = showFooterHints
             self.rowMaxLines = rowMaxLines; self.pageSize = pageSize
             self.animateGifs = animateGifs
+            self.tileSize = tileSize; self.defaultLayout = defaultLayout
         }
 
         init(from decoder: Decoder) throws {
@@ -172,6 +194,8 @@ struct CopyPasteConfig: Codable {
             rowMaxLines = (try? c.decode(Int.self, forKey: .rowMaxLines)) ?? d.rowMaxLines
             pageSize = (try? c.decode(Int.self, forKey: .pageSize)) ?? d.pageSize
             animateGifs = (try? c.decode(String.self, forKey: .animateGifs)) ?? d.animateGifs
+            tileSize = (try? c.decode(Double.self, forKey: .tileSize)) ?? d.tileSize
+            defaultLayout = (try? c.decode(String.self, forKey: .defaultLayout)) ?? d.defaultLayout
         }
     }
 
@@ -249,7 +273,12 @@ struct CopyPasteConfig: Codable {
             commit:     Shortcut(key: "RETURN"),
             cancel:     Shortcut(key: "ESC"),
             quit:       Shortcut(key: "Q", modifiers: ["cmd"]),
-            downloadImage: Shortcut(key: "D", modifiers: ["cmd"])
+            downloadImage: Shortcut(key: "D", modifiers: ["cmd"]),
+            toggleLayout: Shortcut(key: "G", modifiers: ["cmd"]),
+            selectLeft: Shortcut(key: "LEFT"),
+            selectRight: Shortcut(key: "RIGHT"),
+            extendLeft: Shortcut(key: "LEFT", modifiers: ["shift"]),
+            extendRight: Shortcut(key: "RIGHT", modifiers: ["shift"])
         ),
         maxHistory: 500,
         clipboardPath: "~/Library/Caches/com.getoutreach.mac-tools/copy-paste",
@@ -259,7 +288,7 @@ struct CopyPasteConfig: Codable {
         clipboardTabName: "Clipboard",
         snippetTabs: ["Snippets", "Work"],
         window: WindowConfig(width: 680, height: 560, floating: true, hideOnClickAway: true, followActiveDisplay: true),
-        ui: UIConfig(zebraStriping: true, zebraOpacity: 0.10, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10, pageSize: 10, animateGifs: "visible"),
+        ui: UIConfig(zebraStriping: true, zebraOpacity: 0.10, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10, pageSize: 10, animateGifs: "visible", tileSize: 150, defaultLayout: "list"),
         multiSelectPasteSeparator: "\n",
         deleteTabConfirmWord: "delete",
         pollInterval: 0.3,

@@ -41,23 +41,28 @@ enum GIFFrameCache {
     }()
     private static let queue = DispatchQueue(label: "mac-tools.gif-decode", qos: .utility)
     private static var pending: [String: [(GIFFrames?) -> Void]] = [:]
+    /// Pixel sizes frames have been decoded at (so `remove` can find every cached variant).
+    private static var sizes = Set<Int>()
 
-    static func cached(_ url: URL) -> GIFFrames? {
-        cache.object(forKey: url.path as NSString)
+    private static func key(_ url: URL, _ px: Int) -> String { "\(url.path)@\(px)" }
+
+    static func cached(_ url: URL, maxPixelSize px: Int = maxPixelSize) -> GIFFrames? {
+        cache.object(forKey: key(url, px) as NSString)
     }
 
     static func remove(_ url: URL) {
-        cache.removeObject(forKey: url.path as NSString)
+        for px in sizes { cache.removeObject(forKey: key(url, px) as NSString) }
     }
 
     /// Calls `completion` on the main thread with the decoded frames (nil if undecodable).
-    static func load(_ url: URL, completion: @escaping (GIFFrames?) -> Void) {
-        if let hit = cached(url) { completion(hit); return }
-        let key = url.path
+    static func load(_ url: URL, maxPixelSize px: Int = maxPixelSize, completion: @escaping (GIFFrames?) -> Void) {
+        if let hit = cached(url, maxPixelSize: px) { completion(hit); return }
+        let key = key(url, px)
         if pending[key] != nil { pending[key]!.append(completion); return }
         pending[key] = [completion]
+        sizes.insert(px)
         queue.async {
-            let frames = decode(url)
+            let frames = decode(url, maxPixelSize: px)
             DispatchQueue.main.async {
                 if let frames { cache.setObject(frames, forKey: key as NSString, cost: frames.cost) }
                 let waiters = pending.removeValue(forKey: key) ?? []
@@ -66,30 +71,32 @@ enum GIFFrameCache {
         }
     }
 
-    private static func decode(_ url: URL) -> GIFFrames? {
+    private static func decode(_ url: URL, maxPixelSize px: Int) -> GIFFrames? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let count = CGImageSourceGetCount(src)
         guard count > 0 else { return nil }
         var frames: [CGImage] = []
         var delays: [Double] = []
         for i in 0..<count {
-            guard let img = CGImageSourceCreateThumbnailAtIndex(src, i, thumbnailOptions) else { continue }
+            guard let img = CGImageSourceCreateThumbnailAtIndex(src, i, thumbnailOptions(px)) else { continue }
             frames.append(img)
             delays.append(delay(src, i))
         }
         return frames.isEmpty ? nil : GIFFrames(frames: frames, delays: delays)
     }
 
-    private static let thumbnailOptions: CFDictionary = [
-        kCGImageSourceCreateThumbnailFromImageAlways: true,
-        kCGImageSourceCreateThumbnailWithTransform: true,
-        kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-    ] as CFDictionary
+    private static func thumbnailOptions(_ px: Int) -> CFDictionary {
+        [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: px,
+        ] as CFDictionary
+    }
 
     /// Small first frame, decoded synchronously — shown while the full sequence decodes.
-    static func firstFrame(_ url: URL) -> CGImage? {
+    static func firstFrame(_ url: URL, maxPixelSize px: Int = maxPixelSize) -> CGImage? {
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateThumbnailAtIndex(src, 0, thumbnailOptions)
+        return CGImageSourceCreateThumbnailAtIndex(src, 0, thumbnailOptions(px))
     }
 
     private static func delay(_ src: CGImageSource, _ i: Int) -> Double {
@@ -122,23 +129,25 @@ enum GIFVisibility {
 /// `allowed` (window shown + `ui.animateGifs` mode) and its row is on screen.
 struct AnimatedGIFView: NSViewRepresentable {
     let source: URL
+    var maxPixelSize: Int = GIFFrameCache.maxPixelSize
     let allowed: Bool
 
     func makeNSView(context: Context) -> GIFLayerView {
         let view = GIFLayerView()
         GIFVisibility.register(view)
-        view.configure(source: source, allowed: allowed)
+        view.configure(source: source, maxPixelSize: maxPixelSize, allowed: allowed)
         return view
     }
 
     func updateNSView(_ view: GIFLayerView, context: Context) {
-        view.configure(source: source, allowed: allowed)
+        view.configure(source: source, maxPixelSize: maxPixelSize, allowed: allowed)
     }
 }
 
 final class GIFLayerView: NSView {
     private static let animationKey = "gif"
     private(set) var source: URL?
+    private var maxPixelSize = GIFFrameCache.maxPixelSize
     private var frames: GIFFrames?
     private var allowed = false
     private var animating = false
@@ -154,13 +163,14 @@ final class GIFLayerView: NSView {
 
     override var wantsUpdateLayer: Bool { true }
 
-    func configure(source: URL, allowed: Bool) {
-        if source != self.source {
+    func configure(source: URL, maxPixelSize: Int, allowed: Bool) {
+        if source != self.source || maxPixelSize != self.maxPixelSize {
             self.source = source
-            frames = GIFFrameCache.cached(source)
+            self.maxPixelSize = maxPixelSize
+            frames = GIFFrameCache.cached(source, maxPixelSize: maxPixelSize)
             animating = false
             layer?.removeAnimation(forKey: Self.animationKey)
-            layer?.contents = frames?.frames.first ?? GIFFrameCache.firstFrame(source)
+            layer?.contents = frames?.frames.first ?? GIFFrameCache.firstFrame(source, maxPixelSize: maxPixelSize)
         }
         self.allowed = allowed
         refresh()
@@ -171,8 +181,9 @@ final class GIFLayerView: NSView {
         guard let source else { return }
         let want = allowed && GIFVisibility.onScreen.contains(source.path)
         if want, frames == nil {
-            GIFFrameCache.load(source) { [weak self] loaded in
-                guard let self, self.source == source, let loaded else { return }
+            let px = maxPixelSize
+            GIFFrameCache.load(source, maxPixelSize: px) { [weak self] loaded in
+                guard let self, self.source == source, self.maxPixelSize == px, let loaded else { return }
                 self.frames = loaded
                 self.refresh()
             }

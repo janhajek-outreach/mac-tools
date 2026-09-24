@@ -53,6 +53,8 @@ and organise entries across tabs — then paste into whatever app you were using
 | **F3** | Add / edit a label (single selection) |
 | **F5** | Copy selection to another tab (then press the tab number) |
 | **⌘D** | Download image link(s) — adds each linked image/GIF as a new item above its link |
+| **⌘G** | Switch the current tab between list and tiles (remembered per tab) |
+| **← / →** | Tiles: previous / next item (**↑ / ↓** move by a row, **⇧** extends) |
 | **F8** | Delete selection |
 | **⌘↑ / ⌘↓** | Reorder selection up / down within the list (disabled while searching) |
 | **⌘← / ⌘→** | Switch between tabs |
@@ -63,6 +65,15 @@ and organise entries across tabs — then paste into whatever app you were using
 
 History persists between restarts. Captured images/files are stored as copies ("blobs")
 in the storage folders described under [Storage layout & syncing](#storage-layout--syncing).
+
+**List or tiles (⌘G)**
+- Each tab can show its items as a list or as a grid of tiles (`ui.tileSize`, default
+  150 pt — 4 per row in the default window). Images/GIFs fill their tile, text shows its
+  first lines, and the caption is the label or name.
+- The choice is saved per tab in `tabs.json` (`"layout": "tiles"`); tabs never switched use
+  `ui.defaultLayout` (`"list"`).
+- In tiles, **← / →** move between items, **↑ / ↓** by a row, **⇞ / ⇟** by a screen, and
+  **⇧** + arrows extend the selection. Everything else (paste, F2, F3, F5, F8, ⌘D) is the same.
 
 **Download images from links (⌘D)**
 - Select one or more text items that are links to images or GIFs (e.g. a
@@ -241,7 +252,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "showList": { "key": "L", "modifiers": ["cmd"] },
     "search":   { "key": "F", "modifiers": ["cmd"] },
     "window": { "width": 680, "height": 560, "floating": true, "hideOnClickAway": true, "followActiveDisplay": true },
-    "ui": { "zebraStriping": true, "zebraOpacity": 0.05, "selectionOpacity": 0.22, "showFooterHints": true, "rowMaxLines": 10, "pageSize": 10, "animateGifs": "visible" },
+    "ui": { "zebraStriping": true, "zebraOpacity": 0.05, "selectionOpacity": 0.22, "showFooterHints": true, "rowMaxLines": 10, "pageSize": 10, "animateGifs": "visible", "tileSize": 150, "defaultLayout": "list" },
     "keys": {
       "editText":   { "key": "F2" },
       "label":      { "key": "F3" },
@@ -265,7 +276,12 @@ omit falls back to its built-in default, so you only need to specify what you wa
       "commit":     { "key": "RETURN" },
       "cancel":     { "key": "ESC" },
       "quit":       { "key": "Q", "modifiers": ["cmd"] },
-      "downloadImage": { "key": "D", "modifiers": ["cmd"] }
+      "downloadImage": { "key": "D", "modifiers": ["cmd"] },
+      "toggleLayout": { "key": "G", "modifiers": ["cmd"] },
+      "selectLeft":  { "key": "LEFT" },
+      "selectRight": { "key": "RIGHT" },
+      "extendLeft":  { "key": "LEFT",  "modifiers": ["shift"] },
+      "extendRight": { "key": "RIGHT", "modifiers": ["shift"] }
     }
   }
 }

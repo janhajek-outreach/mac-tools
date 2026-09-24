@@ -76,6 +76,9 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         model.onCommit = { [weak self] item in self?.pasteAndHide(item) }
         model.onCommitMany = { [weak self] items in self?.pasteManyAndHide(items) }
         model.onCancel = { [weak self] in self?.hideWindow() }
+        store.defaultLayout = TabLayout(rawValue: config.ui.defaultLayout.lowercased()) ?? .list
+        model.columns = TileMetrics.columns(width: config.window.width, tile: config.ui.tileSize)
+        model.pageRows = TileMetrics.rowsPerPage(height: config.window.height, tile: config.ui.tileSize)
     }
 
     private func setupWindow() {
@@ -417,6 +420,12 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
 
         // ---- Extend selection (shift + arrows) ----
+        if model.isTiles, !model.searchActive {
+            if keys.extendUp.matches(event)    { model.moveInGrid(by: -model.columns, extend: true); return nil }
+            if keys.extendDown.matches(event)  { model.moveInGrid(by: model.columns, extend: true); return nil }
+            if keys.extendLeft.matches(event)  { model.moveInGrid(by: -1, extend: true); return nil }
+            if keys.extendRight.matches(event) { model.moveInGrid(by: 1, extend: true); return nil }
+        }
         if keys.extendUp.matches(event)   { model.extendSelectionUp(); return nil }
         if keys.extendDown.matches(event) { model.extendSelectionDown(); return nil }
 
@@ -438,6 +447,10 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
 
         // ---- Multi-safe actions (copy to tab / delete / download images) ----
+        if keys.toggleLayout.matches(event) {
+            store.toggleLayout(ofTab: store.currentTab)
+            return nil
+        }
         if keys.downloadImage.matches(event) {
             downloadSelectedImages()
             return nil
@@ -455,6 +468,18 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
 
         // ---- Plain navigation (collapses multi-selection) ----
+        if model.isTiles {
+            let page = model.columns * model.pageRows
+            if keys.selectUp.matches(event)   { model.moveInGrid(by: -model.columns); return nil }
+            if keys.selectDown.matches(event) { model.moveInGrid(by: model.columns); return nil }
+            if !model.searchActive {
+                // In the search box ←/→ keep moving the text cursor.
+                if keys.selectLeft.matches(event)  { model.moveInGrid(by: -1); return nil }
+                if keys.selectRight.matches(event) { model.moveInGrid(by: 1); return nil }
+            }
+            if keys.pageUp.matches(event)   { model.pageUp(by: page); return nil }
+            if keys.pageDown.matches(event) { model.pageDown(by: page); return nil }
+        }
         if keys.selectUp.matches(event)   { model.moveSelectionUp(); return nil }
         if keys.selectDown.matches(event) { model.moveSelectionDown(); return nil }
         if keys.pageUp.matches(event)     { model.pageUp(by: config.ui.pageSize); return nil }
