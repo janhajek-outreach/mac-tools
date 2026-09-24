@@ -14,15 +14,21 @@ struct CopyPasteConfig: Codable {
     var maxHistory: Int
     /// How often (seconds) to poll the pasteboard for new items.
     var pollInterval: Double
-    /// Directory (relative to the feature data dir, or absolute/`~`) where image/file blobs live.
-    var blobDir: String
-    /// Filename (within the feature data dir) for the persisted tabs — everything EXCEPT the
+    /// Folder for the Clipboard tab: `clipboardFile` + `blobs/` (copies of captured files).
+    /// Absolute or `~` path; relative paths resolve under the config dir. Defaults to Caches —
+    /// history is disposable and isn't worth backing up.
+    var clipboardPath: String
+    /// Folder for snippet tabs: `tabsFile` + `blobs/`. Defaults to Application Support.
+    var snippetPath: String
+    /// Filename (within `snippetPath`) for the persisted tabs — everything EXCEPT the
     /// auto-capture clipboard items (safe to sync / symlink).
     var tabsFile: String
-    /// Filename (within the feature data dir) for the volatile clipboard-tab items
+    /// Filename (within `clipboardPath`) for the volatile clipboard-tab items
     /// (changes constantly; intentionally kept separate so it need not be synced).
     var clipboardFile: String
-
+    /// Files up to this size (MB) are copied into the blob store when captured; larger ones
+    /// are only linked to the original and can go missing if it's deleted.
+    var fileCopyLimitMB: Int
     // Tabs
     /// Name of the fixed auto-capture tab.
     var clipboardTabName: String
@@ -139,11 +145,15 @@ struct CopyPasteConfig: Codable {
         var rowMaxLines: Int
         /// Number of rows the selection jumps when paging (Page Up / Page Down).
         var pageSize: Int
+        /// GIF thumbnail animation: "visible" (on-screen rows while the window is shown),
+        /// "selected" (only the highlighted row), or "off" (still first frame).
+        var animateGifs: String
 
-        init(zebraStriping: Bool, zebraOpacity: Double, selectionOpacity: Double, showFooterHints: Bool, rowMaxLines: Int, pageSize: Int) {
+        init(zebraStriping: Bool, zebraOpacity: Double, selectionOpacity: Double, showFooterHints: Bool, rowMaxLines: Int, pageSize: Int, animateGifs: String = "visible") {
             self.zebraStriping = zebraStriping; self.zebraOpacity = zebraOpacity
             self.selectionOpacity = selectionOpacity; self.showFooterHints = showFooterHints
             self.rowMaxLines = rowMaxLines; self.pageSize = pageSize
+            self.animateGifs = animateGifs
         }
 
         init(from decoder: Decoder) throws {
@@ -155,6 +165,7 @@ struct CopyPasteConfig: Codable {
             showFooterHints = (try? c.decode(Bool.self, forKey: .showFooterHints)) ?? d.showFooterHints
             rowMaxLines = (try? c.decode(Int.self, forKey: .rowMaxLines)) ?? d.rowMaxLines
             pageSize = (try? c.decode(Int.self, forKey: .pageSize)) ?? d.pageSize
+            animateGifs = (try? c.decode(String.self, forKey: .animateGifs)) ?? d.animateGifs
         }
     }
 
@@ -167,9 +178,11 @@ struct CopyPasteConfig: Codable {
         keys      = (try? c.decode(KeyBindings.self, forKey: .keys)) ?? d.keys
         maxHistory = (try? c.decode(Int.self, forKey: .maxHistory)) ?? d.maxHistory
         pollInterval = (try? c.decode(Double.self, forKey: .pollInterval)) ?? d.pollInterval
-        blobDir   = (try? c.decode(String.self, forKey: .blobDir)) ?? d.blobDir
+        clipboardPath = (try? c.decode(String.self, forKey: .clipboardPath)) ?? d.clipboardPath
+        snippetPath = (try? c.decode(String.self, forKey: .snippetPath)) ?? d.snippetPath
         tabsFile  = (try? c.decode(String.self, forKey: .tabsFile)) ?? d.tabsFile
         clipboardFile = (try? c.decode(String.self, forKey: .clipboardFile)) ?? d.clipboardFile
+        fileCopyLimitMB = (try? c.decode(Int.self, forKey: .fileCopyLimitMB)) ?? d.fileCopyLimitMB
         clipboardTabName = (try? c.decode(String.self, forKey: .clipboardTabName)) ?? d.clipboardTabName
         snippetTabs = (try? c.decode([String].self, forKey: .snippetTabs)) ?? d.snippetTabs
         window    = (try? c.decode(WindowConfig.self, forKey: .window)) ?? d.window
@@ -182,12 +195,16 @@ struct CopyPasteConfig: Codable {
     // Memberwise initializer (retained because we added a custom decoder).
     init(
         showList: Shortcut, search: Shortcut, keys: KeyBindings, maxHistory: Int,
-        blobDir: String, tabsFile: String, clipboardFile: String, clipboardTabName: String, snippetTabs: [String],
+        clipboardPath: String, snippetPath: String, tabsFile: String, clipboardFile: String,
+        clipboardTabName: String, snippetTabs: [String],
         window: WindowConfig, ui: UIConfig, multiSelectPasteSeparator: String, deleteTabConfirmWord: String,
-        pollInterval: Double, promotePastedToTop: Bool = true
+        pollInterval: Double, promotePastedToTop: Bool = true, fileCopyLimitMB: Int = 30
     ) {
+        self.fileCopyLimitMB = fileCopyLimitMB
         self.showList = showList; self.search = search; self.keys = keys
-        self.maxHistory = maxHistory; self.blobDir = blobDir; self.tabsFile = tabsFile
+        self.maxHistory = maxHistory
+        self.clipboardPath = clipboardPath; self.snippetPath = snippetPath
+        self.tabsFile = tabsFile
         self.clipboardFile = clipboardFile
         self.clipboardTabName = clipboardTabName; self.snippetTabs = snippetTabs
         self.window = window; self.ui = ui
@@ -225,16 +242,18 @@ struct CopyPasteConfig: Codable {
             quit:       Shortcut(key: "Q", modifiers: ["cmd"])
         ),
         maxHistory: 500,
-        blobDir: "blobs",
+        clipboardPath: "~/Library/Caches/com.getoutreach.mac-tools/copy-paste",
+        snippetPath: "~/Library/Application Support/com.getoutreach.mac-tools/copy-paste",
         tabsFile: "tabs.json",
         clipboardFile: "clipboard.json",
         clipboardTabName: "Clipboard",
         snippetTabs: ["Snippets", "Work"],
         window: WindowConfig(width: 680, height: 560, floating: true, hideOnClickAway: true, followActiveDisplay: true),
-        ui: UIConfig(zebraStriping: true, zebraOpacity: 0.10, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10, pageSize: 10),
+        ui: UIConfig(zebraStriping: true, zebraOpacity: 0.10, selectionOpacity: 0.22, showFooterHints: true, rowMaxLines: 10, pageSize: 10, animateGifs: "visible"),
         multiSelectPasteSeparator: "\n",
         deleteTabConfirmWord: "delete",
         pollInterval: 0.3,
-        promotePastedToTop: true
+        promotePastedToTop: true,
+        fileCopyLimitMB: 30
     )
 }

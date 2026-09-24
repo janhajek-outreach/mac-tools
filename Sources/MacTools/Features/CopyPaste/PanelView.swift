@@ -23,6 +23,30 @@ struct VisualEffectBackground: NSViewRepresentable {
     }
 }
 
+/// GIF thumbnail that tracks whether its row is on screen (LazyVStack fires onAppear /
+/// onDisappear as rows scroll in and out) and animates according to `ui.animateGifs`.
+private struct GIFThumbnailCell: View {
+    let source: URL
+    let mode: String
+    let windowVisible: Bool
+    let isSelected: Bool
+
+    private var allowed: Bool {
+        guard windowVisible else { return false }
+        switch mode {
+        case "off": return false
+        case "selected": return isSelected
+        default: return true
+        }
+    }
+
+    var body: some View {
+        AnimatedGIFView(source: source, allowed: allowed)
+            .onAppear { GIFVisibility.set(source, onScreen: true) }
+            .onDisappear { GIFVisibility.set(source, onScreen: false) }
+    }
+}
+
 struct PanelView: View {
     @ObservedObject var model: PickerModel
     @ObservedObject var store: TabStore
@@ -63,6 +87,7 @@ struct PanelView: View {
         .overlay { if model.labelingIndex != nil { labelOverlay } }
         .overlay { if model.namingTab { tabNameOverlay } }
         .overlay { if model.confirmDeleteTabIndex != nil { confirmDeleteOverlay } }
+        .overlay { if model.pendingCopy != nil { confirmCopyOverlay } }
         .onChange(of: model.searchActive) { active in searchFocused = active }
         .onChange(of: model.query) { _ in model.selectSingle(0) }
         .onChange(of: model.editingIndex) { idx in editFocused = (idx != nil) }
@@ -162,17 +187,17 @@ struct PanelView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 30, alignment: .trailing)
 
-            thumbnail(for: item)
+            thumbnail(for: item, index: index)
 
             VStack(alignment: .leading, spacing: 2) {
                 if let label = item.label, !label.isEmpty {
                     Text(label).font(.body).bold().lineLimit(1)
                 }
-                if model.editingIndex == index, item.isEditableText {
+                if model.editingIndex == index {
                     TextField("", text: $model.editingText, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .focused($editFocused)
-                        .lineLimit(1...max(1, config.ui.rowMaxLines))
+                        .lineLimit(1...max(1, item.kind == .text ? config.ui.rowMaxLines : 1))
                         .onAppear {
                             // The field is inserted into the hierarchy in the same update that
                             // sets `editingIndex`, so focus it once it actually exists.
@@ -190,11 +215,27 @@ struct PanelView: View {
             }
             Spacer(minLength: 0)
 
-            Text(kindBadge(item.kind))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.top, 3)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(kindBadge(item.kind))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if store.isMissing(item) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .help(item.isReference
+                              ? "Original file is missing — can't paste"
+                              : "Stored copy is missing — can't paste")
+                } else if item.isReference {
+                    Image(systemName: "link")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .help("Linked — not stored, may go missing if the original is deleted")
+                }
+            }
+            .padding(.top, 3)
         }
+        .opacity(store.isMissing(item) ? 0.4 : 1)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(rowBackground(index: index))
@@ -211,17 +252,32 @@ struct PanelView: View {
     }
 
     @ViewBuilder
-    private func thumbnail(for item: ClipItem) -> some View {
-        if item.kind == .image, let blob = item.blobFilename, let nsImage = BlobStore.image(blob) {
+    private func thumbnail(for item: ClipItem, index: Int) -> some View {
+        let url = item.kind == .image && !store.isMissing(item) ? store.contentURL(for: item, inTab: store.currentTab) : nil
+        if let url, BlobStore.isGIF(url) {
+            GIFThumbnailCell(
+                source: url,
+                mode: config.ui.animateGifs,
+                windowVisible: model.isVisible,
+                isSelected: index == model.selection
+            )
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else if let url, let nsImage = BlobStore.thumbnail(at: url) {
             Image(nsImage: nsImage)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else if item.kind == .image {
+            Image(systemName: "photo")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+                .frame(width: 80, height: 80)
         } else if item.kind == .file {
             Image(systemName: "doc.fill")
                 .font(.title2)
-                .foregroundStyle(.blue)
+                .foregroundStyle(store.isMissing(item) ? Color.secondary : Color.blue)
                 .frame(width: 40, height: 40)
         }
     }
@@ -300,6 +356,33 @@ struct PanelView: View {
         }
     }
 
+    private var confirmCopyOverlay: some View {
+        overlayCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Copy to \(model.pendingCopy?.destName ?? "tab")").font(.headline)
+                if let p = model.pendingCopy {
+                    let size = FileReference.formatBytes(p.bytes)
+                    Text(p.itemCount == 1
+                         ? "Putting this item in “\(p.destName)” will create a copy with size \(size)."
+                         : "Putting these items in “\(p.destName)” will create copies of \(p.itemCount) linked files, \(size) in total.")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let free = p.freeBytes {
+                        Text("Free space: \(FileReference.formatBytes(free))")
+                            .font(.callout)
+                            .foregroundStyle(p.hasEnoughSpace ? Color.secondary : Color.red)
+                    }
+                    if !p.hasEnoughSpace {
+                        Text("Not enough free space.").font(.callout).bold().foregroundStyle(.red)
+                        Text("Esc to cancel").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Enter to copy · Esc to cancel").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
     private var copyToTabOverlay: some View {
         overlayCard {
             VStack(alignment: .leading, spacing: 8) {
@@ -343,7 +426,11 @@ struct PanelView: View {
             Text("\(k.label.displayLabel) label").hint()
             Text("\(k.delete.displayLabel) del").hint()
             Spacer()
-            if model.hasMultiSelection {
+            if let message = model.statusMessage {
+                Text(message).foregroundStyle(.orange)
+            } else if !model.hasMultiSelection, let item = model.selectedItem, store.isMissing(item) {
+                Text("File is missing — can't paste").foregroundStyle(.orange)
+            } else if model.hasMultiSelection {
                 Text("\(model.selectedIndices.count) selected").foregroundStyle(.secondary)
             } else {
                 Text("\(model.filtered.count)").foregroundStyle(.secondary)

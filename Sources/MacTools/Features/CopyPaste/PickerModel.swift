@@ -12,7 +12,7 @@ final class PickerModel: ObservableObject {
     @Published var selectedIndices: Set<Int> = [0]
     @Published var searchActive: Bool = false
 
-    /// When non-nil, the row at this index is in inline-edit mode (text) — F2.
+    /// When non-nil, the row at this index is in inline-edit mode (text, or image/file name) — F2.
     @Published var editingIndex: Int? = nil
     @Published var editingText: String = ""
 
@@ -32,6 +32,33 @@ final class PickerModel: ObservableObject {
     /// When non-nil, a delete-confirmation prompt is open for this tab index.
     @Published var confirmDeleteTabIndex: Int? = nil
     @Published var confirmDeleteText: String = ""
+
+    /// True while the picker window is on screen; GIF thumbnails only animate when set.
+    @Published var isVisible: Bool = false
+
+    /// A copy-to-tab that needs confirmation because it materializes large linked files.
+    struct PendingCopy {
+        let ids: [UUID]
+        let sourceTab: Int
+        let destTab: Int
+        let destName: String
+        let itemCount: Int
+        /// Total size of the linked originals that will be copied.
+        let bytes: Int64
+        let freeBytes: Int64?
+        var hasEnoughSpace: Bool { freeBytes.map { $0 > bytes } ?? true }
+    }
+    @Published var pendingCopy: PendingCopy? = nil
+
+    /// Transient message shown in the footer (e.g. "File is missing — can't paste").
+    @Published var statusMessage: String? = nil
+
+    func flash(_ message: String) {
+        statusMessage = message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            if self?.statusMessage == message { self?.statusMessage = nil }
+        }
+    }
 
     let store: TabStore
 
@@ -67,7 +94,8 @@ final class PickerModel: ObservableObject {
     var hasMultiSelection: Bool { selectedIndices.count > 1 }
 
     var isModalOpen: Bool {
-        editingIndex != nil || labelingIndex != nil || copyToTabForIndex != nil || namingTab || confirmDeleteTabIndex != nil
+        editingIndex != nil || labelingIndex != nil || copyToTabForIndex != nil || namingTab
+            || confirmDeleteTabIndex != nil || pendingCopy != nil
     }
 
     func reset() {
@@ -83,6 +111,8 @@ final class PickerModel: ObservableObject {
         namingTabIndex = nil
         confirmDeleteTabIndex = nil
         confirmDeleteText = ""
+        pendingCopy = nil
+        statusMessage = nil
     }
 
     func clampSelection() {
@@ -181,6 +211,7 @@ final class PickerModel: ObservableObject {
             namingTabIndex = nil
             confirmDeleteTabIndex = nil
             confirmDeleteText = ""
+            pendingCopy = nil
         } else if searchActive && !query.isEmpty {
             query = ""; selectSingle(0)
         } else if searchActive {

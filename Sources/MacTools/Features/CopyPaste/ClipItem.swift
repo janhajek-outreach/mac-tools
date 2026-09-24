@@ -25,6 +25,10 @@ struct ClipItem: Codable, Identifiable, Equatable {
     /// For `.file`: original file name for display / re-paste.
     var originalName: String?
 
+    /// For linked image/file items (too large to copy): bookmark to the original file.
+    /// Such items have no `blobFilename` and can go missing if the original is deleted.
+    var bookmark: Data?
+
     init(
         id: UUID = UUID(),
         kind: ClipItemKind,
@@ -32,7 +36,8 @@ struct ClipItem: Codable, Identifiable, Equatable {
         createdAt: Date = Date(),
         text: String? = nil,
         blobFilename: String? = nil,
-        originalName: String? = nil
+        originalName: String? = nil,
+        bookmark: Data? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -41,10 +46,20 @@ struct ClipItem: Codable, Identifiable, Equatable {
         self.text = text
         self.blobFilename = blobFilename
         self.originalName = originalName
+        self.bookmark = bookmark
     }
 
-    /// True when the item is plain text and therefore editable (F2).
-    var isEditableText: Bool { kind == .text }
+    /// True for items that only link to the original file instead of storing a copy.
+    var isReference: Bool { blobFilename == nil && bookmark != nil }
+
+    /// Value edited inline with F2: the text for `.text`, the name for image/file items.
+    var editableValue: String {
+        switch kind {
+        case .text:  return text ?? ""
+        case .image: return originalName ?? "Image"
+        case .file:  return originalName ?? "File"
+        }
+    }
 
     /// A one-line title for the row. Prefers the user label.
     var displayTitle: String {
@@ -54,7 +69,7 @@ struct ClipItem: Codable, Identifiable, Equatable {
             let t = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? "(empty)" : t
         case .image:
-            return "Image"
+            return originalName ?? "Image"
         case .file:
             return originalName ?? "File"
         }

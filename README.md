@@ -49,7 +49,7 @@ and organise entries across tabs — then paste into whatever app you were using
 | **⎋** | Close search, or close window and return focus to the previous app |
 | **⌘F** | Open the search box (focused immediately) |
 | **any letter / digit** | Starts searching right away (opens the search box and types into it) |
-| **F2** | Edit item inline (plain text only; single selection) |
+| **F2** | Edit item inline — text content, or the name of an image/file (single selection) |
 | **F3** | Add / edit a label (single selection) |
 | **F5** | Copy selection to another tab (then press the tab number) |
 | **F8** | Delete selection |
@@ -60,8 +60,21 @@ and organise entries across tabs — then paste into whatever app you were using
 | **⌘W** | Remove the current tab (the auto-capture tab can't be removed) |
 | **⌘Q** | Quit the app |
 
-History persists between restarts. Images/files are stored as blobs under the configured
-blob directory (default `copy-paste/blobs/` inside the config dir).
+History persists between restarts. Captured images/files are stored as copies ("blobs")
+in the storage folders described under [Storage layout & syncing](#storage-layout--syncing).
+
+**Large files are linked, not copied**
+- Copying a file in Finder stores a copy of it — unless it's larger than `fileCopyLimitMB`
+  (default 30 MB). Then the Clipboard tab only keeps a link (a bookmark that follows the
+  file if it's moved or renamed), marked with a small 🔗 icon under the type badge.
+- If the original is deleted (or moved to the Trash, or its drive is unplugged), the item
+  turns grey with a ⚠︎ icon. It can still be selected, renamed, labelled and deleted, but
+  not pasted. It comes back to normal if the file reappears.
+- Pasting a linked item pastes the original file, just like Finder. If you renamed it with
+  F2, a temporary copy under the new name is pasted instead.
+- Snippet tabs always keep their own copy. Copying a linked item there (F5) first asks for
+  confirmation, showing the size of the copy and the free disk space; the copy runs in the
+  background.
 
 ### Screenshot
 Interactive rectangle capture. Press the hotkey (default **⌥F12**, configurable via
@@ -203,9 +216,11 @@ omit falls back to its built-in default, so you only need to specify what you wa
   "copyPaste": {
     "maxHistory": 500,
     "pollInterval": 0.3,
-    "blobDir": "blobs",
+    "clipboardPath": "~/Library/Caches/com.getoutreach.mac-tools/copy-paste",
+    "snippetPath": "~/Library/Application Support/com.getoutreach.mac-tools/copy-paste",
     "tabsFile": "tabs.json",
     "clipboardFile": "clipboard.json",
+    "fileCopyLimitMB": 30,
     "clipboardTabName": "Clipboard",
     "snippetTabs": ["Snippets", "Work"],
     "multiSelectPasteSeparator": "\n",
@@ -214,7 +229,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "showList": { "key": "L", "modifiers": ["cmd"] },
     "search":   { "key": "F", "modifiers": ["cmd"] },
     "window": { "width": 680, "height": 560, "floating": true, "hideOnClickAway": true, "followActiveDisplay": true },
-    "ui": { "zebraStriping": true, "zebraOpacity": 0.05, "selectionOpacity": 0.22, "showFooterHints": true, "rowMaxLines": 10, "pageSize": 10 },
+    "ui": { "zebraStriping": true, "zebraOpacity": 0.05, "selectionOpacity": 0.22, "showFooterHints": true, "rowMaxLines": 10, "pageSize": 10, "animateGifs": "visible" },
     "keys": {
       "editText":   { "key": "F2" },
       "label":      { "key": "F3" },
@@ -250,26 +265,42 @@ omit falls back to its built-in default, so you only need to specify what you wa
 - `window.followActiveDisplay` — when `true` (default) the panel opens centered on the
   display you're working on (the one holding the focused window, else the one under the
   mouse). Set to `false` to always use the primary display.
-- `blobDir` / `tabsFile` / `clipboardFile` — relative paths are resolved under the
-  copy-paste data dir; absolute or `~` paths are used as-is.
+- `ui.animateGifs` — GIF thumbnail animation: `"visible"` (default; rows on screen, only
+  while the panel is shown), `"selected"` (only the highlighted row), or `"off"`.
+- `clipboardPath` / `snippetPath` — storage folders (see below). Absolute or `~` paths are
+  used as-is; relative paths are resolved under the config dir. `tabsFile` /
+  `clipboardFile` are file names inside those folders.
 - Restart the app after editing.
 
 ### Storage layout & syncing
 
-Copy-paste persistence is split into two files so you can sync your snippets without the
-constantly-changing clipboard history creating noise:
+Copy-paste data lives in two folders, so the constantly-changing clipboard history stays
+out of your backups and synced files:
+
+| Folder | Default | Contains |
+|---|---|---|
+| `clipboardPath` | `~/Library/Caches/com.getoutreach.mac-tools/copy-paste` | `clipboard.json` + `blobs/` (copies of captured images/files ≤ `fileCopyLimitMB`) |
+| `snippetPath` | `~/Library/Application Support/com.getoutreach.mac-tools/copy-paste` | `tabs.json` + `blobs/` (copies owned by snippet tabs) |
 
 - **`tabsFile`** (default `tabs.json`) — all tabs and their names/order, plus your custom
   tab **items**, but with the auto-capture **Clipboard tab's items stripped out**. This
   file only changes when you edit tabs/snippets, so it's safe to **symlink into a synced
-  dotfiles repo**.
+  dotfiles repo** (or point `snippetPath` at a synced folder).
 - **`clipboardFile`** (default `clipboard.json`) — only the volatile clipboard history.
-  Changes on every copy; keep it local (not synced).
+  Changes on every copy. Caches isn't backed up by Time Machine; if the folder is cleaned,
+  history starts fresh (items whose copy vanished show as missing).
+
+Blob files are named `<UUID>.<ext>`; the JSON maps each item to its blob. Files no item
+references are deleted at launch.
 
 JSON is written with **sorted keys**, so editing one value produces a minimal, stable diff
-instead of the whole file appearing to change. Blob bytes for images/files live under
-`blobDir`. On first launch after upgrading, any clipboard items still embedded in an old
-`tabs.json` are migrated automatically into `clipboardFile`.
+instead of the whole file appearing to change.
+
+**Upgrading:** on first launch, data from the old single-folder layout
+(`<configDir>/copy-paste/` with one shared `blobs/`) is moved into the two folders
+automatically — each item's file goes to the folder of its tab. To keep snippets where they
+were, set `"snippetPath": "~/.config/mac-tools/copy-paste"`. Older `tabs.json` files that
+still embed clipboard items are split into `clipboardFile` too.
 
 ## Architecture
 

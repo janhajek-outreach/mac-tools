@@ -1,34 +1,31 @@
 import Foundation
 import AppKit
+import ImageIO
 
-/// Stores image/file bytes on disk. The directory is configurable and set at startup
-/// via `BlobStore.configure(dir:)`; defaults to the copy-paste feature's `blobs/` dir.
-enum BlobStore {
-    private static var overrideDir: URL?
+/// A directory holding image/file bytes ("blobs") under generated `<UUID>.<ext>` names.
+struct BlobDir {
+    let dir: URL
 
-    /// Point the blob store at a configured directory (absolute, `~`, or relative to the
-    /// feature data dir — resolution handled by the caller).
-    static func configure(dir: URL) {
-        overrideDir = dir
+    init(_ dir: URL) {
+        self.dir = dir
     }
 
-    static var dir: URL {
-        let url = overrideDir ?? AppPaths.dataFile("copy-paste", "blobs")
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
+    /// Creates the directory on demand so a wiped cache folder heals itself.
+    private func ensureDir() {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
 
-    static func url(for filename: String) -> URL {
+    func url(for filename: String) -> URL {
         dir.appendingPathComponent(filename)
     }
 
     /// Write bytes with the given extension; returns the generated filename.
     @discardableResult
-    static func write(_ data: Data, ext: String) -> String? {
+    func write(_ data: Data, ext: String) -> String? {
+        ensureDir()
         let filename = "\(UUID().uuidString).\(ext)"
-        let url = dir.appendingPathComponent(filename)
         do {
-            try data.write(to: url)
+            try data.write(to: url(for: filename))
             return filename
         } catch {
             NSLog("mac-tools: failed to write blob (\(error))")
@@ -36,17 +33,82 @@ enum BlobStore {
         }
     }
 
-    static func read(_ filename: String) -> Data? {
-        try? Data(contentsOf: url(for: filename))
+    func exists(_ filename: String) -> Bool {
+        FileManager.default.fileExists(atPath: url(for: filename).path)
     }
 
-    static func delete(_ filename: String) {
-        try? FileManager.default.removeItem(at: url(for: filename))
+    func delete(_ filename: String) {
+        let fileURL = url(for: filename)
+        BlobStore.evict(fileURL)
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
-    /// Load an NSImage for an image blob (used for thumbnails).
-    static func image(_ filename: String) -> NSImage? {
-        guard let data = read(filename) else { return nil }
-        return NSImage(data: data)
+    /// Copy a file in without loading it into memory (APFS clones it when source and
+    /// destination share a volume). Returns the generated blob filename.
+    func copyFile(from source: URL) -> String? {
+        ensureDir()
+        let ext = source.pathExtension.isEmpty ? "bin" : source.pathExtension
+        let filename = "\(UUID().uuidString).\(ext)"
+        do {
+            try FileManager.default.copyItem(at: source, to: url(for: filename))
+            return filename
+        } catch {
+            NSLog("mac-tools: failed to copy file into blob store (\(error))")
+            return nil
+        }
+    }
+
+    /// Filenames currently in the directory (hidden files excluded).
+    func allFilenames() -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?
+            .filter { !$0.hasPrefix(".") } ?? []
+    }
+}
+
+/// The two blob directories — one for the Clipboard tab (volatile history, defaults to
+/// Caches) and one for snippet tabs (kept, defaults to Application Support) — plus shared
+/// thumbnail helpers. Directories are set at startup via `configure`.
+enum BlobStore {
+    // Placeholders until `configure` runs at startup (no directories are created here).
+    private(set) static var clipboard = BlobDir(AppPaths.configDir.appendingPathComponent("copy-paste/blobs"))
+    private(set) static var snippets = BlobDir(AppPaths.configDir.appendingPathComponent("copy-paste/blobs"))
+
+    static func configure(clipboard clipboardDir: URL, snippets snippetDir: URL) {
+        clipboard = BlobDir(clipboardDir)
+        snippets = BlobDir(snippetDir)
+    }
+
+    private static let imageCache: NSCache<NSString, NSImage> = {
+        let c = NSCache<NSString, NSImage>()
+        c.countLimit = 100
+        c.totalCostLimit = 64 * 1024 * 1024
+        return c
+    }()
+
+    /// Drop in-memory thumbnails/frames for a file that's being deleted.
+    static func evict(_ fileURL: URL) {
+        imageCache.removeObject(forKey: fileURL.path as NSString)
+        GIFFrameCache.remove(fileURL)
+    }
+
+    /// Downscaled thumbnail (160px, i.e. 80pt at 2x) for an image file — a blob or a linked
+    /// original. Cached in memory so list redraws don't re-read the file.
+    static func thumbnail(at fileURL: URL) -> NSImage? {
+        let key = fileURL.path as NSString
+        if let cached = imageCache.object(forKey: key) { return cached }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 160,
+        ]
+        guard let src = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        imageCache.setObject(image, forKey: key, cost: cg.bytesPerRow * cg.height)
+        return image
+    }
+
+    static func isGIF(_ fileURL: URL) -> Bool {
+        fileURL.pathExtension.lowercased() == "gif"
     }
 }

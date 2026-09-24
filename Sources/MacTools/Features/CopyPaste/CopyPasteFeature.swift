@@ -22,19 +22,37 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
 
     init(config: CopyPasteConfig) {
         self.config = config
-        // Configure storage paths from config before creating stores.
-        BlobStore.configure(dir: AppPaths.resolve(config.blobDir, feature: "copy-paste"))
-        let tabsURL = AppPaths.dataFile("copy-paste", config.tabsFile)
-        let clipboardURL = AppPaths.dataFile("copy-paste", config.clipboardFile)
+        // Resolve storage folders, move data over from the old single-folder layout, then
+        // point the blob stores at the configured folders before loading.
+        let clipboardDir = CopyPasteFeature.resolveDir(config.clipboardPath)
+        let snippetDir = CopyPasteFeature.resolveDir(config.snippetPath)
+        let migrated = CopyPasteStorage.migrateLegacyLayout(
+            legacyDir: AppPaths.configDir.appendingPathComponent("copy-paste", isDirectory: true),
+            clipboardDir: clipboardDir,
+            snippetDir: snippetDir,
+            clipboardFile: config.clipboardFile,
+            tabsFile: config.tabsFile
+        )
+        BlobStore.configure(
+            clipboard: clipboardDir.appendingPathComponent("blobs", isDirectory: true),
+            snippets: snippetDir.appendingPathComponent("blobs", isDirectory: true)
+        )
         self.store = TabStore(
             maxHistory: config.maxHistory,
             snippetTabNames: config.snippetTabs,
             clipboardTabName: config.clipboardTabName,
-            tabsFileURL: tabsURL,
-            clipboardFileURL: clipboardURL
+            tabsFileURL: snippetDir.appendingPathComponent(config.tabsFile),
+            clipboardFileURL: clipboardDir.appendingPathComponent(config.clipboardFile),
+            cleanOrphanBlobs: migrated
         )
         self.model = PickerModel(store: store)
         super.init()
+    }
+
+    /// Absolute or `~` paths are used as-is; relative ones resolve under the config dir.
+    private static func resolveDir(_ path: String) -> URL {
+        if path.hasPrefix("/") || path.hasPrefix("~") { return AppPaths.expand(path) }
+        return AppPaths.configDir.appendingPathComponent(path, isDirectory: true)
     }
 
     func activate() {
@@ -81,6 +99,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     }
 
     private func setupClipboardMonitor() {
+        ClipboardMonitor.fileCopyLimitBytes = Int64(max(0, config.fileCopyLimitMB)) * 1024 * 1024
         monitor = ClipboardMonitor { [weak self] item in
             self?.store.capture(item)
         }
@@ -102,9 +121,11 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         previousApp = NSWorkspace.shared.frontmostApplication
         previousWindow = ActiveScreen.focusedWindow(of: previousApp)
         model.reset()
+        store.refreshReferences()
         positionOnActiveScreen()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        model.isVisible = true
         installLocalKeyMonitor()
     }
 
@@ -142,15 +163,27 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
     private func hideWindow(returnFocus: Bool = false) {
         removeLocalKeyMonitor()
         window.orderOut(nil)
+        model.isVisible = false
         if returnFocus { restorePreviousFocus() } else { previousWindow = nil }
     }
 
     private func pasteAndHide(_ item: ClipItem) {
+        // Image/file items paste from disk — refuse (and mark grey) if the file is gone.
+        var fileURL: URL?
+        if item.kind != .text {
+            fileURL = store.locateFile(for: item, inTab: store.currentTab)
+            guard fileURL != nil else {
+                NSSound.beep()
+                model.flash("File is missing — can't paste")
+                return
+            }
+        }
+
         // Most-recently-used ordering: the item we just pasted moves to the top of its tab.
         promoteToTop([item])
 
         // Put the content on the clipboard first.
-        Paster.setClipboard(item)
+        Paster.setClipboard(item, fileURL: fileURL)
         monitor.syncChangeCount()
 
         // If we can't post key events, just hand off the clipboard and let the user paste.
@@ -163,6 +196,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         // Hide our window and refocus the window we came from before pasting into it.
         removeLocalKeyMonitor()
         window.orderOut(nil)
+        model.isVisible = false
         restorePreviousFocus()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
@@ -186,6 +220,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
         removeLocalKeyMonitor()
         window.orderOut(nil)
+        model.isVisible = false
         restorePreviousFocus()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             Paster.simulatePaste()
@@ -284,8 +319,14 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         // ---- Modal: inline text edit ----
         if model.editingIndex != nil {
             if isCommit(event), !event.modifierFlags.contains(.shift) {
-                if let id = itemID(at: model.editingIndex!) {
-                    store.setText(model.editingText, for: id, in: tabIndex)
+                let f = model.filtered
+                if let editIdx = model.editingIndex, f.indices.contains(editIdx) {
+                    let item = f[editIdx]
+                    if item.kind == .text {
+                        store.setText(model.editingText, for: item.id, in: tabIndex)
+                    } else {
+                        store.setName(model.editingText, for: item.id, in: tabIndex)
+                    }
                 }
                 model.editingIndex = nil
                 return nil
@@ -294,17 +335,31 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
             return event
         }
 
+        // ---- Modal: confirm copying large linked files into another tab ----
+        if let pending = model.pendingCopy {
+            if isCommit(event) {
+                if pending.hasEnoughSpace {
+                    model.pendingCopy = nil
+                    performCopy(pending.ids, from: pending.sourceTab, to: pending.destTab)
+                } else {
+                    NSSound.beep()
+                }
+                return nil
+            }
+            if isCancel(event) { model.pendingCopy = nil; return nil }
+            return nil
+        }
+
         // ---- Modal: copy-to-tab picker ----
         if let srcIndex = model.copyToTabForIndex {
             if isCancel(event) { model.copyToTabForIndex = nil; return nil }
             if let dest = tabNumberPressed(event), dest != store.currentTab {
                 // Copy all selected items if multi-selected, else just the source row.
-                if model.hasMultiSelection {
-                    store.copyItems(model.selectedItems.map(\.id), from: store.currentTab, to: dest)
-                } else if let id = itemID(at: srcIndex) {
-                    store.copyItem(id, from: store.currentTab, to: dest)
-                }
+                let items = model.hasMultiSelection
+                    ? model.selectedItems
+                    : (model.filtered.indices.contains(srcIndex) ? [model.filtered[srcIndex]] : [])
                 model.copyToTabForIndex = nil
+                requestCopy(items, to: dest)
                 return nil
             }
             return nil // swallow other keys while picking
@@ -354,8 +409,8 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
 
         // ---- Single-selection-only actions (edit / label / paste) ----
         if keys.editText.matches(event) {
-            if !model.hasMultiSelection, let item = model.selectedItem, item.isEditableText {
-                model.editingText = item.text ?? ""; model.editingIndex = model.selection
+            if !model.hasMultiSelection, let item = model.selectedItem {
+                model.editingText = item.editableValue; model.editingIndex = model.selection
             }
             return nil
         }
@@ -441,6 +496,55 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
             model.escape()
         } else {
             hideWindow(returnFocus: true)
+        }
+    }
+
+    // MARK: Copy to tab
+
+    /// Copy items to another tab. Missing linked items are skipped; if any linked originals
+    /// will be materialized into full copies, ask first (showing the size and free space).
+    private func requestCopy(_ items: [ClipItem], to dest: Int) {
+        let source = store.currentTab
+        var copyable: [ClipItem] = []
+        var skipped = 0
+        var linkedBytes: Int64 = 0
+        var linkedCount = 0
+        for item in items {
+            guard item.kind != .text else { copyable.append(item); continue }
+            guard let url = store.locateFile(for: item, inTab: source) else { skipped += 1; continue }
+            copyable.append(item)
+            if item.isReference {
+                linkedCount += 1
+                linkedBytes += FileReference.size(of: url) ?? 0
+            }
+        }
+
+        if copyable.isEmpty {
+            NSSound.beep()
+            model.flash(skipped == 1 ? "File no longer exists — nothing to copy" : "Files no longer exist — nothing to copy")
+            return
+        }
+        if skipped > 0 { model.flash("Skipped \(skipped) missing file(s)") }
+
+        let ids = copyable.map(\.id)
+        guard linkedCount > 0 else {
+            performCopy(ids, from: source, to: dest)
+            return
+        }
+        model.pendingCopy = PickerModel.PendingCopy(
+            ids: ids,
+            sourceTab: source,
+            destTab: dest,
+            destName: store.tabs.indices.contains(dest) ? store.tabs[dest].name : "tab",
+            itemCount: linkedCount,
+            bytes: linkedBytes,
+            freeBytes: FileReference.freeSpace(at: store.blobDir(forTab: dest).dir)
+        )
+    }
+
+    private func performCopy(_ ids: [UUID], from source: Int, to dest: Int) {
+        store.copyItems(ids, from: source, to: dest) { [weak self] failed in
+            if failed > 0 { self?.model.flash("\(failed) item(s) couldn't be copied") }
         }
     }
 
