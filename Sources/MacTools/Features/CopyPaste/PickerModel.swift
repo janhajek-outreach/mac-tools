@@ -50,6 +50,27 @@ final class PickerModel: ObservableObject {
     }
     @Published var pendingCopy: PendingCopy? = nil
 
+    /// A link found by ⌘D that points to an image.
+    struct DownloadCandidate {
+        let sourceID: UUID
+        let url: URL
+        /// Size reported by the server, or nil when unknown.
+        let size: Int64?
+    }
+
+    /// Linked images over `imgDownloadLimitSize`, waiting for confirmation before download.
+    struct PendingDownload {
+        let candidates: [DownloadCandidate]
+        let tabID: UUID
+        let limitBytes: Int64
+        /// Sum of the known sizes (some may be unknown, i.e. only known to exceed the limit).
+        var knownBytes: Int64 { candidates.compactMap(\.size).reduce(0, +) }
+        var hasUnknownSize: Bool { candidates.contains { $0.size == nil } }
+    }
+    /// Not cleared when the panel reopens: downloads finish in the background, and the
+    /// question should still be there when the user comes back.
+    @Published var pendingDownload: PendingDownload? = nil
+
     /// Transient message shown in the footer (e.g. "File is missing — can't paste").
     @Published var statusMessage: String? = nil
 
@@ -95,7 +116,7 @@ final class PickerModel: ObservableObject {
 
     var isModalOpen: Bool {
         editingIndex != nil || labelingIndex != nil || copyToTabForIndex != nil || namingTab
-            || confirmDeleteTabIndex != nil || pendingCopy != nil
+            || confirmDeleteTabIndex != nil || pendingCopy != nil || pendingDownload != nil
     }
 
     func reset() {
@@ -212,6 +233,7 @@ final class PickerModel: ObservableObject {
             confirmDeleteTabIndex = nil
             confirmDeleteText = ""
             pendingCopy = nil
+            pendingDownload = nil
         } else if searchActive && !query.isEmpty {
             query = ""; selectSingle(0)
         } else if searchActive {

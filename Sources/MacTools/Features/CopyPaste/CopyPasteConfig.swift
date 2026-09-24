@@ -29,6 +29,8 @@ struct CopyPasteConfig: Codable {
     /// Files up to this size (MB) are copied into the blob store when captured; larger ones
     /// are only linked to the original and can go missing if it's deleted.
     var fileCopyLimitMB: Int
+    /// Images downloaded from links (⌘D) larger than this (MB) need confirmation first.
+    var imgDownloadLimitSize: Int
     // Tabs
     /// Name of the fixed auto-capture tab.
     var clipboardTabName: String
@@ -67,6 +69,7 @@ struct CopyPasteConfig: Codable {
         var newTab: Shortcut
         var renameTab: Shortcut
         var closeTab: Shortcut
+        var downloadImage: Shortcut     // download linked image(s) as new item(s)
         var commit: Shortcut            // paste
         var cancel: Shortcut            // escape / close
         var quit: Shortcut
@@ -77,8 +80,10 @@ struct CopyPasteConfig: Codable {
             extendUp: Shortcut, extendDown: Shortcut, pageUp: Shortcut, pageDown: Shortcut,
             home: Shortcut, end: Shortcut, prevTab: Shortcut, nextTab: Shortcut,
             newTab: Shortcut, renameTab: Shortcut, closeTab: Shortcut,
-            commit: Shortcut, cancel: Shortcut, quit: Shortcut
+            commit: Shortcut, cancel: Shortcut, quit: Shortcut,
+            downloadImage: Shortcut = Shortcut(key: "D", modifiers: ["cmd"])
         ) {
+            self.downloadImage = downloadImage
             self.editText = editText; self.label = label; self.copyToTab = copyToTab
             self.delete = delete; self.moveUp = moveUp; self.moveDown = moveDown
             self.selectUp = selectUp; self.selectDown = selectDown
@@ -107,6 +112,7 @@ struct CopyPasteConfig: Codable {
             newTab = g(.newTab, d.newTab); renameTab = g(.renameTab, d.renameTab)
             closeTab = g(.closeTab, d.closeTab); commit = g(.commit, d.commit)
             cancel = g(.cancel, d.cancel); quit = g(.quit, d.quit)
+            downloadImage = g(.downloadImage, d.downloadImage)
         }
     }
 
@@ -183,6 +189,7 @@ struct CopyPasteConfig: Codable {
         tabsFile  = (try? c.decode(String.self, forKey: .tabsFile)) ?? d.tabsFile
         clipboardFile = (try? c.decode(String.self, forKey: .clipboardFile)) ?? d.clipboardFile
         fileCopyLimitMB = (try? c.decode(Int.self, forKey: .fileCopyLimitMB)) ?? d.fileCopyLimitMB
+        imgDownloadLimitSize = (try? c.decode(Int.self, forKey: .imgDownloadLimitSize)) ?? d.imgDownloadLimitSize
         clipboardTabName = (try? c.decode(String.self, forKey: .clipboardTabName)) ?? d.clipboardTabName
         snippetTabs = (try? c.decode([String].self, forKey: .snippetTabs)) ?? d.snippetTabs
         window    = (try? c.decode(WindowConfig.self, forKey: .window)) ?? d.window
@@ -198,9 +205,11 @@ struct CopyPasteConfig: Codable {
         clipboardPath: String, snippetPath: String, tabsFile: String, clipboardFile: String,
         clipboardTabName: String, snippetTabs: [String],
         window: WindowConfig, ui: UIConfig, multiSelectPasteSeparator: String, deleteTabConfirmWord: String,
-        pollInterval: Double, promotePastedToTop: Bool = true, fileCopyLimitMB: Int = 30
+        pollInterval: Double, promotePastedToTop: Bool = true, fileCopyLimitMB: Int = 30,
+        imgDownloadLimitSize: Int = 40
     ) {
         self.fileCopyLimitMB = fileCopyLimitMB
+        self.imgDownloadLimitSize = imgDownloadLimitSize
         self.showList = showList; self.search = search; self.keys = keys
         self.maxHistory = maxHistory
         self.clipboardPath = clipboardPath; self.snippetPath = snippetPath
@@ -239,7 +248,8 @@ struct CopyPasteConfig: Codable {
             closeTab:   Shortcut(key: "W", modifiers: ["cmd"]),
             commit:     Shortcut(key: "RETURN"),
             cancel:     Shortcut(key: "ESC"),
-            quit:       Shortcut(key: "Q", modifiers: ["cmd"])
+            quit:       Shortcut(key: "Q", modifiers: ["cmd"]),
+            downloadImage: Shortcut(key: "D", modifiers: ["cmd"])
         ),
         maxHistory: 500,
         clipboardPath: "~/Library/Caches/com.getoutreach.mac-tools/copy-paste",
@@ -254,6 +264,7 @@ struct CopyPasteConfig: Codable {
         deleteTabConfirmWord: "delete",
         pollInterval: 0.3,
         promotePastedToTop: true,
-        fileCopyLimitMB: 30
+        fileCopyLimitMB: 30,
+        imgDownloadLimitSize: 40
     )
 }

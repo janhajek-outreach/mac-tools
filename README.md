@@ -52,6 +52,7 @@ and organise entries across tabs — then paste into whatever app you were using
 | **F2** | Edit item inline — text content, or the name of an image/file (single selection) |
 | **F3** | Add / edit a label (single selection) |
 | **F5** | Copy selection to another tab (then press the tab number) |
+| **⌘D** | Download image link(s) — adds each linked image/GIF as a new item above its link |
 | **F8** | Delete selection |
 | **⌘↑ / ⌘↓** | Reorder selection up / down within the list (disabled while searching) |
 | **⌘← / ⌘→** | Switch between tabs |
@@ -62,6 +63,16 @@ and organise entries across tabs — then paste into whatever app you were using
 
 History persists between restarts. Captured images/files are stored as copies ("blobs")
 in the storage folders described under [Storage layout & syncing](#storage-layout--syncing).
+
+**Download images from links (⌘D)**
+- Select one or more text items that are links to images or GIFs (e.g. a
+  `https://media.tenor.com/….gif` link) and press **⌘D**. Each link is checked first (type
+  and size, via a HEAD request); links that aren't images (e.g. web pages) are skipped.
+- Images are downloaded in the background and added as a **new item directly above the
+  link** — the link item itself stays. The file type comes from the downloaded bytes, the
+  name from the link (e.g. `pepperidge-pepperidge-farm-remembers.gif`).
+- Images larger than `imgDownloadLimitSize` (MB, default 40) are only downloaded after you
+  confirm (Enter to download, Esc to skip).
 
 **Large files are linked, not copied**
 - Copying a file in Finder stores a copy of it — unless it's larger than `fileCopyLimitMB`
@@ -221,6 +232,7 @@ omit falls back to its built-in default, so you only need to specify what you wa
     "tabsFile": "tabs.json",
     "clipboardFile": "clipboard.json",
     "fileCopyLimitMB": 30,
+    "imgDownloadLimitSize": 40,
     "clipboardTabName": "Clipboard",
     "snippetTabs": ["Snippets", "Work"],
     "multiSelectPasteSeparator": "\n",
@@ -252,7 +264,8 @@ omit falls back to its built-in default, so you only need to specify what you wa
       "closeTab":   { "key": "W", "modifiers": ["cmd"] },
       "commit":     { "key": "RETURN" },
       "cancel":     { "key": "ESC" },
-      "quit":       { "key": "Q", "modifiers": ["cmd"] }
+      "quit":       { "key": "Q", "modifiers": ["cmd"] },
+      "downloadImage": { "key": "D", "modifiers": ["cmd"] }
     }
   }
 }

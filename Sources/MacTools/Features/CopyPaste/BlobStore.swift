@@ -58,6 +58,19 @@ struct BlobDir {
         }
     }
 
+    /// Move a file in (e.g. a finished download) under a generated name with `ext`.
+    func moveFile(from source: URL, ext: String) -> String? {
+        ensureDir()
+        let filename = "\(UUID().uuidString).\(ext)"
+        do {
+            try FileManager.default.moveItem(at: source, to: url(for: filename))
+            return filename
+        } catch {
+            NSLog("mac-tools: failed to move file into blob store (\(error))")
+            return nil
+        }
+    }
+
     /// Filenames currently in the directory (hidden files excluded).
     func allFilenames() -> [String] {
         (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?

@@ -88,6 +88,7 @@ struct PanelView: View {
         .overlay { if model.namingTab { tabNameOverlay } }
         .overlay { if model.confirmDeleteTabIndex != nil { confirmDeleteOverlay } }
         .overlay { if model.pendingCopy != nil { confirmCopyOverlay } }
+        .overlay { if model.pendingDownload != nil { confirmDownloadOverlay } }
         .onChange(of: model.searchActive) { active in searchFocused = active }
         .onChange(of: model.query) { _ in model.selectSingle(0) }
         .onChange(of: model.editingIndex) { idx in editFocused = (idx != nil) }
@@ -383,6 +384,30 @@ struct PanelView: View {
         }
     }
 
+    private var confirmDownloadOverlay: some View {
+        overlayCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Download large image?").font(.headline)
+                if let p = model.pendingDownload {
+                    let limit = FileReference.formatBytes(p.limitBytes)
+                    if p.candidates.count == 1, let c = p.candidates.first {
+                        Text(c.url.lastPathComponent).font(.callout).bold().lineLimit(1).truncationMode(.middle)
+                        Text(c.size.map { "It's \(FileReference.formatBytes($0)) — over the \(limit) download limit." }
+                             ?? "It's over the \(limit) download limit.")
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("\(p.candidates.count) images are over the \(limit) download limit"
+                             + (p.knownBytes > 0 ? " (\(FileReference.formatBytes(p.knownBytes))\(p.hasUnknownSize ? "+" : "") in total)." : "."))
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("Enter to download · Esc to skip").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
     private var copyToTabOverlay: some View {
         overlayCard {
             VStack(alignment: .leading, spacing: 8) {
@@ -423,6 +448,7 @@ struct PanelView: View {
             Text("\(config.search.displayLabel) find").hint()
             Text("\(k.editText.displayLabel) edit").hint()
             Text("\(k.copyToTab.displayLabel)→tab").hint()
+            Text("\(k.downloadImage.displayLabel) img").hint()
             Text("\(k.label.displayLabel) label").hint()
             Text("\(k.delete.displayLabel) del").hint()
             Spacer()

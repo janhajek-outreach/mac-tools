@@ -300,6 +300,31 @@ final class TabStore: ObservableObject {
         copyItems([id], from: sourceTab, to: destTab)
     }
 
+    /// Add a downloaded image (⌘D) as a new item directly above the link it came from. The
+    /// tab is looked up by id since the download may finish after tabs changed; if the link
+    /// item is gone, the image goes to the top. Returns false (and deletes the file) if the
+    /// tab no longer exists.
+    @discardableResult
+    func insertDownloadedImage(file: URL, ext: String, name: String, aboveItem sourceID: UUID, inTabID tabID: UUID) -> Bool {
+        guard let t = tabs.firstIndex(where: { $0.id == tabID }) else {
+            try? FileManager.default.removeItem(at: file)
+            return false
+        }
+        guard let blob = blobDir(forTab: t).moveFile(from: file, ext: ext) else {
+            try? FileManager.default.removeItem(at: file)
+            return false
+        }
+        let item = ClipItem(kind: .image, blobFilename: blob, originalName: name)
+        let index = tabs[t].items.firstIndex(where: { $0.id == sourceID }) ?? 0
+        tabs[t].items.insert(item, at: index)
+        if t == clipboardTabIndex, tabs[t].items.count > maxHistory {
+            for removed in tabs[t].items[maxHistory...] { freeBlob(of: removed, in: BlobStore.clipboard) }
+            tabs[t].items.removeLast(tabs[t].items.count - maxHistory)
+        }
+        save(affectedTab: t)
+        return true
+    }
+
     // MARK: Multi-item operations
 
     /// Delete many items (by id) from a tab.

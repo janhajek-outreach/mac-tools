@@ -335,6 +335,22 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
             return event
         }
 
+        // ---- Modal: confirm downloading images over the size limit (⌘D) ----
+        if let pending = model.pendingDownload {
+            if isCommit(event) {
+                model.pendingDownload = nil
+                downloadConfirmed(pending)
+                return nil
+            }
+            if isCancel(event) {
+                model.pendingDownload = nil
+                pending.candidates.forEach { downloadsInFlight.remove(downloadKey(pending.tabID, $0.url)) }
+                model.flash("Skipped \(pending.candidates.count) large image(s)")
+                return nil
+            }
+            return nil
+        }
+
         // ---- Modal: confirm copying large linked files into another tab ----
         if let pending = model.pendingCopy {
             if isCommit(event) {
@@ -421,7 +437,11 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
             return nil
         }
 
-        // ---- Multi-safe actions (copy to tab / delete) ----
+        // ---- Multi-safe actions (copy to tab / delete / download images) ----
+        if keys.downloadImage.matches(event) {
+            downloadSelectedImages()
+            return nil
+        }
         if keys.copyToTab.matches(event) {
             if store.tabs.count > 1, model.selectedItem != nil {
                 model.copyToTabForIndex = model.selection
@@ -497,6 +517,135 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         } else {
             hideWindow(returnFocus: true)
         }
+    }
+
+    // MARK: Download images from links (⌘D)
+
+    /// Links currently being probed/downloaded (or awaiting confirmation), per tab.
+    private var downloadsInFlight = Set<String>()
+
+    private func downloadKey(_ tabID: UUID, _ url: URL) -> String {
+        "\(tabID.uuidString) \(url.absoluteString)"
+    }
+
+    /// For every selected text item that is a link: check it's an image (HEAD), download it
+    /// and add it as a new item above the link (the link item stays). Non-image links are
+    /// skipped; images over `imgDownloadLimitSize` are downloaded only after confirmation.
+    private func downloadSelectedImages() {
+        let tab = store.currentTab
+        guard store.tabs.indices.contains(tab) else { return }
+        let tabID = store.tabs[tab].id
+        let selected = model.hasMultiSelection ? model.selectedItems : (model.selectedItem.map { [$0] } ?? [])
+        var links: [(id: UUID, url: URL)] = []
+        for item in selected where item.kind == .text {
+            if let url = ImageDownloader.link(in: item.text), !downloadsInFlight.contains(downloadKey(tabID, url)) {
+                links.append((item.id, url))
+            }
+        }
+        guard !links.isEmpty else {
+            NSSound.beep()
+            model.flash(selected.count > 1 ? "No image links selected" : "Not a link")
+            return
+        }
+        links.forEach { downloadsInFlight.insert(downloadKey(tabID, $0.url)) }
+        var skipped = selected.count - links.count
+        let limit = Int64(max(1, config.imgDownloadLimitSize)) * 1024 * 1024
+        model.flash(links.count == 1 ? "Checking link…" : "Checking \(links.count) links…")
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let probes = await withTaskGroup(of: (Int, ImageDownloader.Probe).self) { group in
+                for (i, link) in links.enumerated() {
+                    group.addTask { (i, await ImageDownloader.probe(link.url)) }
+                }
+                var out = [ImageDownloader.Probe](repeating: .failed(""), count: links.count)
+                for await (i, probe) in group { out[i] = probe }
+                return out
+            }
+
+            var within: [PickerModel.DownloadCandidate] = []
+            var over: [PickerModel.DownloadCandidate] = []
+            for (i, probe) in probes.enumerated() {
+                let link = links[i]
+                guard case .candidate(let size) = probe else {
+                    skipped += 1
+                    self.downloadsInFlight.remove(self.downloadKey(tabID, link.url))
+                    continue
+                }
+                let candidate = PickerModel.DownloadCandidate(sourceID: link.id, url: link.url, size: size)
+                if let size, size > limit { over.append(candidate) } else { within.append(candidate) }
+            }
+
+            if !within.isEmpty {
+                self.model.flash(within.count == 1 ? "Downloading image…" : "Downloading \(within.count) images…")
+            }
+            // Unknown sizes are capped at the limit; those that turn out bigger join `over`.
+            let result = await self.download(within, tabID: tabID, cap: limit)
+            skipped += result.skipped
+            over += result.tooLarge
+
+            self.model.flash(self.downloadSummary(added: result.added, skipped: skipped))
+            if !over.isEmpty { self.askToDownload(over, tabID: tabID, limit: limit) }
+        }
+    }
+
+    private func askToDownload(_ candidates: [PickerModel.DownloadCandidate], tabID: UUID, limit: Int64) {
+        if let existing = model.pendingDownload, existing.tabID == tabID {
+            model.pendingDownload = PickerModel.PendingDownload(
+                candidates: existing.candidates + candidates, tabID: tabID, limitBytes: limit)
+        } else {
+            model.pendingDownload?.candidates.forEach {
+                downloadsInFlight.remove(downloadKey(model.pendingDownload!.tabID, $0.url))
+            }
+            model.pendingDownload = PickerModel.PendingDownload(candidates: candidates, tabID: tabID, limitBytes: limit)
+        }
+    }
+
+    private func downloadConfirmed(_ pending: PickerModel.PendingDownload) {
+        model.flash(pending.candidates.count == 1 ? "Downloading image…" : "Downloading \(pending.candidates.count) images…")
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.download(pending.candidates, tabID: pending.tabID, cap: nil)
+            self.model.flash(self.downloadSummary(added: result.added, skipped: result.skipped))
+        }
+    }
+
+    /// Download candidates concurrently and insert each image above its link as it arrives.
+    @MainActor
+    private func download(_ candidates: [PickerModel.DownloadCandidate], tabID: UUID, cap: Int64?)
+        async -> (added: Int, skipped: Int, tooLarge: [PickerModel.DownloadCandidate]) {
+        await withTaskGroup(of: (PickerModel.DownloadCandidate, ImageDownloader.Download).self) { group in
+            for c in candidates {
+                group.addTask { (c, await ImageDownloader.download(c.url, cap: cap)) }
+            }
+            var added = 0, skipped = 0
+            var tooLarge: [PickerModel.DownloadCandidate] = []
+            for await (c, result) in group {
+                switch result {
+                case .image(let file, let ext):
+                    let name = ImageDownloader.name(for: c.url, ext: ext)
+                    if store.insertDownloadedImage(file: file, ext: ext, name: name, aboveItem: c.sourceID, inTabID: tabID) {
+                        added += 1
+                    } else {
+                        skipped += 1
+                    }
+                    downloadsInFlight.remove(downloadKey(tabID, c.url))
+                case .tooLarge:
+                    tooLarge.append(c) // stays "in flight" until confirmed or skipped
+                case .notImage, .failed:
+                    skipped += 1
+                    downloadsInFlight.remove(downloadKey(tabID, c.url))
+                }
+            }
+            return (added, skipped, tooLarge)
+        }
+    }
+
+    private func downloadSummary(added: Int, skipped: Int) -> String {
+        var parts: [String] = []
+        if added > 0 { parts.append(added == 1 ? "Added 1 image" : "Added \(added) images") }
+        if skipped > 0 { parts.append("skipped \(skipped) (not an image or failed)") }
+        return parts.isEmpty ? "Nothing downloaded" : parts.joined(separator: ", ")
     }
 
     // MARK: Copy to tab
