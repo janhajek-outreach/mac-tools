@@ -192,10 +192,11 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
     }
 
-    /// Move the pasted items to the top of the tab they live in, and keep the picker's
-    /// selection pointing at the (now top-most) rows.
+    /// Move the pasted items to the top of the clipboard tab, and keep the picker's
+    /// selection pointing at the (now top-most) rows. Snippet tabs keep their manual order.
     private func promoteToTop(_ items: [ClipItem]) {
-        guard config.promotePastedToTop, !items.isEmpty else { return }
+        guard config.promotePastedToTop, !items.isEmpty,
+              store.currentTab == store.clipboardTabIndex else { return }
         store.promoteToTop(items.map(\.id), in: store.currentTab)
         model.selectSingle(0)
         if items.count > 1 { model.selectedIndices = Set(0..<items.count) }

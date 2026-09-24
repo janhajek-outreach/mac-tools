@@ -25,9 +25,11 @@ and organise entries across tabs — then paste into whatever app you were using
   confirmation word (default `delete`) before removal.
 
 **Most-recently-used ordering**
-- Pasting an item moves it to the top of its tab, so the things you use most stay within
-  reach. With a multi-selection, all pasted items move to the top preserving their relative
-  order. Set `copyPaste.promotePastedToTop` to `false` to keep the list order untouched.
+- Pasting an item from the clipboard tab moves it to the top, so the things you use most
+  stay within reach. With a multi-selection, all pasted items move to the top preserving
+  their relative order. Snippet tabs are never reordered by pasting — their order only
+  changes when you reorder items manually. Set `copyPaste.promotePastedToTop` to `false`
+  to keep the clipboard list order untouched too.
 
 **Multi-select**
 - Hold **⇧** with the select-up/down keys (or shift-click a row) to select a range.
