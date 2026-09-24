@@ -296,6 +296,10 @@ omit falls back to its built-in default, so you only need to specify what you wa
   mouse). Set to `false` to always use the primary display.
 - `ui.animateGifs` — GIF thumbnail animation: `"visible"` (default; rows on screen, only
   while the panel is shown), `"selected"` (only the highlighted row), or `"off"`.
+  Animated thumbnails are small looping videos (HEVC with transparency) converted once per
+  GIF in the background and cached in `~/Library/Caches/com.getoutreach.mac-tools/gif-video/`
+  — the hardware video decoder plays them, so memory stays low. Pasting always uses the
+  original GIF. Videos of GIFs no longer in any tab are removed at launch.
 - `clipboardPath` / `snippetPath` — storage folders (see below). Absolute or `~` paths are
   used as-is; relative paths are resolved under the config dir. `tabsFile` /
   `clipboardFile` are file names inside those folders.

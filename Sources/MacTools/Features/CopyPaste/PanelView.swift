@@ -41,11 +41,10 @@ enum TileMetrics {
     }
 }
 
-/// GIF thumbnail that tracks whether its row is on screen (LazyVStack fires onAppear /
-/// onDisappear as rows scroll in and out) and animates according to `ui.animateGifs`.
+/// GIF thumbnail that animates according to `ui.animateGifs` (the view itself also checks
+/// that it's actually visible before playing).
 private struct GIFThumbnailCell: View {
     let source: URL
-    let maxPixelSize: Int
     let mode: String
     let windowVisible: Bool
     let isSelected: Bool
@@ -60,9 +59,7 @@ private struct GIFThumbnailCell: View {
     }
 
     var body: some View {
-        AnimatedGIFView(source: source, maxPixelSize: maxPixelSize, allowed: allowed)
-            .onAppear { GIFVisibility.set(source, onScreen: true) }
-            .onDisappear { GIFVisibility.set(source, onScreen: false) }
+        AnimatedGIFView(source: source, allowed: allowed)
     }
 }
 
@@ -395,7 +392,6 @@ struct PanelView: View {
         if let url, BlobStore.isGIF(url) {
             GIFThumbnailCell(
                 source: url,
-                maxPixelSize: pixels,
                 mode: config.ui.animateGifs,
                 windowVisible: model.isVisible,
                 isSelected: index == model.selection

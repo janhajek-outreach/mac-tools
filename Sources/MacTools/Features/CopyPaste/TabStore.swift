@@ -188,6 +188,17 @@ final class TabStore: ObservableObject {
         return item.isReference ? resolvedURLs[item.id] : nil
     }
 
+    /// Stored GIF files across all tabs (used to prune cached GIF video thumbnails).
+    func storedGIFURLs() -> [URL] {
+        tabs.indices.flatMap { t in
+            tabs[t].items.compactMap { item -> URL? in
+                guard let blob = item.blobFilename else { return nil }
+                let url = blobDir(forTab: t).url(for: blob)
+                return BlobStore.isGIF(url) ? url : nil
+            }
+        }
+    }
+
     /// Re-check every item's file in the background: which linked originals are gone, where
     /// the others live now (bookmarks follow moves/renames, stale ones get refreshed), and
     /// which blobs have disappeared.

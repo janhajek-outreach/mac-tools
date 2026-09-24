@@ -47,6 +47,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         )
         self.model = PickerModel(store: store)
         super.init()
+        if migrated { GIFVideoCache.prune(keeping: store.storedGIFURLs()) }
     }
 
     /// Absolute or `~` paths are used as-is; relative ones resolve under the config dir.

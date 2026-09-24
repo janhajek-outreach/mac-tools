@@ -101,7 +101,7 @@ enum BlobStore {
     /// Drop in-memory thumbnails/frames for a file that's being deleted.
     static func evict(_ fileURL: URL) {
         for px in thumbnailSizes { imageCache.removeObject(forKey: "\(fileURL.path)@\(px)" as NSString) }
-        GIFFrameCache.remove(fileURL)
+        GIFVideoCache.remove(fileURL)
     }
 
     /// Pixel sizes thumbnails have been made at (so `evict` can find every cached variant).
