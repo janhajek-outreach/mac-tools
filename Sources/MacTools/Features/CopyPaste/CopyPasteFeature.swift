@@ -495,14 +495,25 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         if isCancel(event) { handleEscape(); return nil }
 
         // ---- Type-to-search: any plain letter/digit starts filtering immediately ----
-        if !model.searchActive, let typed = typedSearchCharacter(event) {
-            model.activateSearch()
+        // Also keeps feeding the query while the search field is still gaining focus,
+        // otherwise keys typed in that short gap would be dropped.
+        let searchPendingFocus = model.searchActive && !searchFieldIsFocused
+        if !model.searchActive || searchPendingFocus, let typed = typedSearchCharacter(event) {
+            if !model.searchActive { model.activateSearch() }
             model.query.append(typed)
             model.selectSingle(0)
             return nil
         }
+        if searchPendingFocus, Int(event.keyCode) == kVK_Delete, !model.query.isEmpty {
+            model.query.removeLast()
+            return nil
+        }
 
         return event
+    }
+
+    private var searchFieldIsFocused: Bool {
+        (NSApp.keyWindow?.firstResponder as? NSTextView)?.isFieldEditor == true
     }
 
     /// Returns the character to seed the search box with when the user just starts typing

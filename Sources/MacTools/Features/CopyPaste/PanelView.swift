@@ -105,7 +105,10 @@ struct PanelView: View {
         .overlay { if model.confirmDeleteTabIndex != nil { confirmDeleteOverlay } }
         .overlay { if model.pendingCopy != nil { confirmCopyOverlay } }
         .overlay { if model.pendingDownload != nil { confirmDownloadOverlay } }
-        .onChange(of: model.searchActive) { active in searchFocused = active }
+        .onChange(of: model.searchActive) { active in
+            searchFocused = active
+            if active { DispatchQueue.main.async { moveSearchCursorToEnd() } }
+        }
         .onChange(of: model.query) { _ in model.selectSingle(0) }
         .onChange(of: model.editingIndex) { idx in editFocused = (idx != nil) }
         .onChange(of: model.labelingIndex) { idx in labelFocused = (idx != nil) }
@@ -150,8 +153,12 @@ struct PanelView: View {
                     // The field is inserted into the hierarchy in the same update that flips
                     // `searchActive`, so focus it once it actually exists.
                     searchFocused = true
+                    DispatchQueue.main.async { moveSearchCursorToEnd() }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                        // Re-focusing an already focused field would select all its text again.
+                        guard (NSApp.keyWindow?.firstResponder as? NSTextView)?.isFieldEditor != true else { return }
                         searchFocused = true
+                        DispatchQueue.main.async { moveSearchCursorToEnd() }
                     }
                 }
                 .onSubmit {
@@ -160,6 +167,13 @@ struct PanelView: View {
                 }
         }
         .padding(10)
+    }
+
+    /// Focusing an NSTextField selects all its text, which would make the next keystroke
+    /// overwrite the type-to-search seed character. Collapse the selection to the end instead.
+    private func moveSearchCursorToEnd() {
+        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
+        editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
     }
 
     // MARK: List
