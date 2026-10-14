@@ -421,7 +421,7 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
         }
 
         // ---- Extend selection (shift + arrows) ----
-        if model.isTiles, !model.searchActive {
+        if model.isTiles {
             if keys.extendUp.matches(event)    { model.moveInGrid(by: -model.columns, extend: true); return nil }
             if keys.extendDown.matches(event)  { model.moveInGrid(by: model.columns, extend: true); return nil }
             if keys.extendLeft.matches(event)  { model.moveInGrid(by: -1, extend: true); return nil }
@@ -473,11 +473,9 @@ final class CopyPasteFeature: NSObject, Feature, NSWindowDelegate {
             let page = model.columns * model.pageRows
             if keys.selectUp.matches(event)   { model.moveInGrid(by: -model.columns); return nil }
             if keys.selectDown.matches(event) { model.moveInGrid(by: model.columns); return nil }
-            if !model.searchActive {
-                // In the search box ←/→ keep moving the text cursor.
-                if keys.selectLeft.matches(event)  { model.moveInGrid(by: -1); return nil }
-                if keys.selectRight.matches(event) { model.moveInGrid(by: 1); return nil }
-            }
+            // Also while searching; ⌥←/⌥→ still move the search field's text cursor.
+            if keys.selectLeft.matches(event)  { model.moveInGrid(by: -1); return nil }
+            if keys.selectRight.matches(event) { model.moveInGrid(by: 1); return nil }
             if keys.pageUp.matches(event)   { model.pageUp(by: page); return nil }
             if keys.pageDown.matches(event) { model.pageDown(by: page); return nil }
         }

@@ -73,7 +73,8 @@ in the storage folders described under [Storage layout & syncing](#storage-layou
 - The choice is saved per tab in `tabs.json` (`"layout": "tiles"`); tabs never switched use
   `ui.defaultLayout` (`"list"`).
 - In tiles, **← / →** move between items, **↑ / ↓** by a row, **⇞ / ⇟** by a screen, and
-  **⇧** + arrows extend the selection. Everything else (paste, F2, F3, F5, F8, ⌘D) is the same.
+  **⇧** + arrows extend the selection — also while searching (use **⌥← / ⌥→** to move the
+  text cursor in the search box). Everything else (paste, F2, F3, F5, F8, ⌘D) is the same.
 
 **Download images from links (⌘D)**
 - Select one or more text items that are links to images or GIFs (e.g. a
